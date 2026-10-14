@@ -1,0 +1,2 @@
+-- This file is used for testing
+-- create fake members, households, and transactions

@@ -1,0 +1,26 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Firebase
+.firebase/
+.firebaserc
+firebase-debug.log*
+functions/.env
+google-services.json
+GoogleService-Info.plist
+# Firebase admin keys (server secrets)
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+
+# macOS
+.DS_Store
+
+# Build output and dependencies
+node_modules/
+dist/
+build/
+.expo/
+coverage/
+*.log
