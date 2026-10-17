@@ -333,3 +333,23 @@ export async function sendMessage(username: string, inviteCode: string, messageT
 // TODO: Implement both of these later if there is time
 // export function signInUser(username: string, password: string): void {}
 // export function signOutUser(): void {}
+
+/**
+ * Example usage of the Romie Texting Module
+ * This example creates a user account, creates a conversation, and sends a message 
+ * to the conversation.
+ */
+// Create user account A and a conversation, then send a message to the conversation
+(async () => {
+    const userA = createAccount('testuser', 'password123');
+    const inviteCode = await createConversation(userA.name);
+    await sendMessage(userA.name, inviteCode, 'Hello, world!');
+    // Create user account B and join the conversation, then send a message to the conversation
+    const userB = createAccount('world', 'password456');
+    await joinConversation(userB.name, inviteCode);
+    await sendMessage(userB.name, inviteCode, 'Hi! 342621!?');
+    // Remove both users from the conversation and delete the conversation
+    await leaveConversation(userA.name, inviteCode);
+    await leaveConversation(userB.name, inviteCode);
+    await deleteConversation(inviteCode);
+})();
