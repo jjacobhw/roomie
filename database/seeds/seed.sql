@@ -1,29 +1,30 @@
--- Fake data for local development only. Safe to re-run.
+-- Fixed identities make the fixtures safe to load repeatedly.
 
+-- created 3 demo users
 INSERT INTO users (id, firebase_uid, display_name) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'seed-alice', 'Alice'),
-  ('00000000-0000-0000-0000-000000000002', 'seed-bob',   'Bob'),
-  ('00000000-0000-0000-0000-000000000003', 'seed-carol', 'Carol')  -- not in any household
-ON CONFLICT (firebase_uid) DO NOTHING;
-
-INSERT INTO households (id, name, invite_code, created_by) VALUES
-  ('aaaaaaaa-0000-0000-0000-000000000001', 'Seed House', 'a1b2c3',
-   '00000000-0000-0000-0000-000000000001')
+('00000000-0000-0000-0000-000000000001', 'local-user-1', 'Alex'),
+('00000000-0000-0000-0000-000000000002', 'local-user-2', 'Sam'),
+('00000000-0000-0000-0000-000000000003', 'local-user-3', 'Taylor')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO household_members (household_id, user_id, role) VALUES
-  ('aaaaaaaa-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'owner'),
-  ('aaaaaaaa-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'member')
-ON CONFLICT DO NOTHING;
+-- create a demo household
+INSERT INTO households (id, name, invite_code, created_by) VALUES
+('10000000-0000-0000-0000-000000000001', 'Demo household', 'DEMO01', '00000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
 
--- posts has no natural unique key, so only seed it when the board is empty.
+-- add demo household members
+INSERT INTO household_members (household_id, user_id, role) VALUES
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'owner'),
+('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002', 'member')
+ON CONFLICT (household_id, user_id) DO NOTHING;
+
+-- insert sample post with different timestamps
 INSERT INTO posts (household_id, author_id, body, created_at)
-SELECT 'aaaaaaaa-0000-0000-0000-000000000001', v.author_id, v.body, now() - v.age
-FROM (VALUES
-  ('00000000-0000-0000-0000-000000000001'::uuid, 'Welcome to Seed House!', interval '10 minutes'),
-  ('00000000-0000-0000-0000-000000000002'::uuid, 'Who took my oat milk',   interval '5 minutes'),
-  ('00000000-0000-0000-0000-000000000001'::uuid, 'Not me',                 interval '1 minute')
-) AS v(author_id, body, age)
-WHERE NOT EXISTS (
-  SELECT 1 FROM posts WHERE household_id = 'aaaaaaaa-0000-0000-0000-000000000001'
-);
+SELECT '10000000-0000-0000-0000-000000000001'::uuid,
+       '00000000-0000-0000-0000-000000000001'::uuid, body, now() - age
+FROM (VALUES ('Welcome home!', interval '15 minutes'),
+             ('Groceries are in the kitchen.', interval '10 minutes'),
+             ('House meeting tonight?', interval '5 minutes')) AS demo(body, age)
+WHERE NOT EXISTS (SELECT 1 FROM posts WHERE household_id = '10000000-0000-0000-0000-000000000001');
+
+-- adds repeatable demo data
