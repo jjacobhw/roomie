@@ -40,3 +40,8 @@ docs/       architecture and sprint notes
    ```
 
 Secrets live in the untracked root `.env`; `.env.example` lists the variable names.
+
+## Execution
+1. Run in terminal: cd /Users/austinlamarche/Programs/ roomie/frontend && npm start
+2. Enter username and password for your account for the Expo Go app
+3. Scan the given qr code
