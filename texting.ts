@@ -1,5 +1,5 @@
 /*
- * Romie Texting Module
+ * Roomie Texting Module
  * Provides functions to manage user accounts, conversations, and messages in PostgreSQL.
  * All error messages are logged to the console.
  */
