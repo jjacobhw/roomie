@@ -1,6 +1,6 @@
 // Fake backend that keeps everything in memory, so the UI can be built before
 // the real API exists. Same functions and result shapes the real API will have.
-import { Conversation, Message, MessagingError } from '../types/messaging';
+import { Conversation, Message, MessagingError } from "../types/messaging";
 
 const FAKE_NETWORK_DELAY_MS = 250;
 const COOLDOWN_MS = 3000; // Sprint 1: the server enforces 3s between messages per sender
@@ -10,14 +10,14 @@ const lastSentAt = new Map<string, number>(); // username -> time of last messag
 
 // A ready-made chat so "join with code" can be tried straight away. Its owner is
 // not one of the hardcoded users, so both of them start out free to create or join.
-conversations.set('DEMO12', {
-  inviteCode: 'DEMO12',
-  users: ['sam'],
+conversations.set("DEMO12", {
+  inviteCode: "DEMO12",
+  users: ["Austin ligmarche"],
   messages: [
     {
-      id: 'seed-1',
-      username: 'sam',
-      messageText: 'Welcome to the house chat!',
+      id: "seed-1",
+      username: "Austin ligmarche",
+      messageText: "Welcome to the crib chat!",
       timestamp: new Date().toISOString(),
     },
   ],
@@ -34,7 +34,10 @@ function findConversationOf(username: string): Conversation | undefined {
 function getOrThrow(inviteCode: string): Conversation {
   const conversation = conversations.get(inviteCode);
   if (!conversation) {
-    throw new MessagingError('CONVERSATION_NOT_FOUND', `No chat with code ${inviteCode}`);
+    throw new MessagingError(
+      "CONVERSATION_NOT_FOUND",
+      `No chat with code ${inviteCode}`,
+    );
   }
   return conversation;
 }
@@ -42,19 +45,33 @@ function getOrThrow(inviteCode: string): Conversation {
 export async function createConversation(username: string): Promise<string> {
   await delay();
   if (findConversationOf(username)) {
-    throw new MessagingError('ALREADY_IN_CONVERSATION', `${username} is already in a chat`);
+    // user is already in a chat, can't create a new one
+    throw new MessagingError(
+      "ALREADY_IN_CONVERSATION",
+      `${username} is already in a chat`,
+    );
   }
   const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-  conversations.set(inviteCode, { inviteCode, users: [username], messages: [] });
+  conversations.set(inviteCode, {
+    inviteCode,
+    users: [username],
+    messages: [],
+  });
   return inviteCode;
 }
 
-export async function joinConversation(username: string, inviteCode: string): Promise<void> {
+export async function joinConversation(
+  username: string,
+  inviteCode: string,
+): Promise<void> {
   await delay();
   const conversation = getOrThrow(inviteCode);
   if (conversation.users.includes(username)) return; // rejoining your own chat is fine
   if (findConversationOf(username)) {
-    throw new MessagingError('ALREADY_IN_CONVERSATION', `${username} is already in a chat`);
+    throw new MessagingError(
+      "ALREADY_IN_CONVERSATION",
+      `${username} is already in a chat`,
+    );
   }
   conversation.users.push(username);
 }
@@ -75,13 +92,13 @@ export async function sendMessage(
 
   const text = messageText.trim();
   if (!text) {
-    throw new MessagingError('EMPTY_MESSAGE', 'Message is empty');
+    throw new MessagingError("EMPTY_MESSAGE", "Message is empty");
   }
 
   const now = Date.now();
   const waitMs = COOLDOWN_MS - (now - (lastSentAt.get(username) ?? 0));
   if (waitMs > 0) {
-    throw new MessagingError('RATE_LIMITED', 'Slow down a little', waitMs);
+    throw new MessagingError("RATE_LIMITED", "Slow down a little", waitMs);
   }
 
   const message: Message = {
@@ -95,7 +112,10 @@ export async function sendMessage(
   return message;
 }
 
-export async function leaveConversation(username: string, inviteCode: string): Promise<void> {
+export async function leaveConversation(
+  username: string,
+  inviteCode: string,
+): Promise<void> {
   await delay();
   const conversation = getOrThrow(inviteCode);
   conversation.users = conversation.users.filter((u) => u !== username);
