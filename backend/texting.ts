@@ -351,5 +351,11 @@ export async function sendMessage(username: string, inviteCode: string, messageT
     // Remove both users from the conversation and delete the conversation
     await leaveConversation(userA.name, inviteCode);
     await leaveConversation(userB.name, inviteCode);
-    await deleteConversation(inviteCode);
+    // Test if conversation has been deleted
+    const conversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
+    if (conversationResult.rows.length === 0) {
+        console.log('Conversation successfully deleted.');
+    } else {
+        console.error('Failed to delete conversation with invite code:', inviteCode);
+    }
 })();
