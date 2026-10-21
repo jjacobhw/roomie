@@ -8,14 +8,15 @@ const COOLDOWN_MS = 3000; // Sprint 1: the server enforces 3s between messages p
 const conversations = new Map<string, Conversation>();
 const lastSentAt = new Map<string, number>(); // username -> time of last message
 
-// A ready-made chat so "join with code" can be tried straight away.
+// A ready-made chat so "join with code" can be tried straight away. Its owner is
+// not one of the hardcoded users, so both of them start out free to create or join.
 conversations.set('DEMO12', {
   inviteCode: 'DEMO12',
-  users: ['testuser'],
+  users: ['sam'],
   messages: [
     {
       id: 'seed-1',
-      username: 'testuser',
+      username: 'sam',
       messageText: 'Welcome to the house chat!',
       timestamp: new Date().toISOString(),
     },
