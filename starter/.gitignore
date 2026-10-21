@@ -1,0 +1,14 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Firebase
+.firebase/
+.firebaserc
+firebase-debug.log*
+functions/.env
+google-services.json
+GoogleService-Info.plist
+
+serviceAccount.json
