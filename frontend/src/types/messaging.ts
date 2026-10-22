@@ -17,7 +17,8 @@ export type Conversation = {
 };
 
 // The hardcoded Sprint 1 users.
-export const USERS = ['testuser', 'world'] as const;
+// They match display_name in database/seeds/seed.sql, so the real server recognizes them.
+export const USERS = ['Alex', 'Sam', 'Taylor'] as const;
 export type Username = (typeof USERS)[number];
 
 // Why a request failed, so the UI can show a useful message.
