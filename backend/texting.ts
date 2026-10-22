@@ -11,7 +11,7 @@ type QueryResult<T = QueryRow> = {
 };
 
 interface PgClient {
-    query: (text: string, values?: unknown[]) => Promise<QueryResult>;
+    query: <T = QueryRow>(text: string, values?: unknown[]) => Promise<QueryResult<T>>;
 }
 
 declare const pgClient: PgClient;
@@ -33,6 +33,59 @@ export interface Conversation {
     inviteCode: string;     // The invite code for the conversation
     messages: Message[];    // The messages in the conversation
     users: string[];        // The usernames of the users in the conversation
+}
+
+export interface ConversationSummary {
+    inviteCode: string;
+    name: string;
+    users: string[];
+}
+
+export async function getConversations(pgClient: PgClient): Promise<ConversationSummary[]> {
+    const result = await pgClient.query<ConversationSummary>(
+        `SELECT h.invite_code AS "inviteCode",
+                h.name,
+                COALESCE(
+                    array_agg(u.display_name ORDER BY u.display_name)
+                        FILTER (WHERE u.id IS NOT NULL),
+                    ARRAY[]::text[]
+                ) AS users
+         FROM households h
+         LEFT JOIN household_members hm ON hm.household_id = h.id
+         LEFT JOIN users u ON u.id = hm.user_id
+         GROUP BY h.id
+         ORDER BY h.created_at DESC`
+    );
+
+    return result.rows;
+}
+
+export async function getMessages(
+    pgClient: PgClient,
+    inviteCode: string
+): Promise<Message[] | null> {
+    const conversationResult = await pgClient.query(
+        'SELECT id FROM households WHERE invite_code = $1',
+        [inviteCode]
+    );
+    if (conversationResult.rows.length === 0) {
+        return null;
+    }
+
+    const result = await pgClient.query<Message>(
+        `SELECT u.display_name AS username,
+                p.body AS "messageText",
+                ARRAY[]::text[] AS attachments,
+                p.created_at AS timestamp
+         FROM posts p
+         JOIN households h ON h.id = p.household_id
+         JOIN users u ON u.id = p.author_id
+         WHERE h.invite_code = $1
+         ORDER BY p.created_at ASC`,
+        [inviteCode]
+    );
+
+    return result.rows;
 }
 
 /**
@@ -333,29 +386,3 @@ export async function sendMessage(username: string, inviteCode: string, messageT
 // TODO: Implement both of these later if there is time
 // export function signInUser(username: string, password: string): void {}
 // export function signOutUser(): void {}
-
-/**
- * Example usage of the Romie Texting Module
- * This example creates a user account, creates a conversation, and sends a message 
- * to the conversation.
- */
-// Create user account A and a conversation, then send a message to the conversation
-(async () => {
-    const userA = createAccount('testuser', 'password123');
-    const inviteCode = await createConversation(userA.name);
-    await sendMessage(userA.name, inviteCode, 'Hello, world!');
-    // Create user account B and join the conversation, then send a message to the conversation
-    const userB = createAccount('world', 'password456');
-    await joinConversation(userB.name, inviteCode);
-    await sendMessage(userB.name, inviteCode, 'Hi! 342621!?');
-    // Remove both users from the conversation and delete the conversation
-    await leaveConversation(userA.name, inviteCode);
-    await leaveConversation(userB.name, inviteCode);
-    // Test if conversation has been deleted
-    const conversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    if (conversationResult.rows.length === 0) {
-        console.log('Conversation successfully deleted.');
-    } else {
-        console.error('Failed to delete conversation with invite code:', inviteCode);
-    }
-})();
