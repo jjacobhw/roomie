@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,18 +14,18 @@ import { StatusBar } from 'expo-status-bar';
 import { Composer } from '../components/Composer';
 import { MessageBubble } from '../components/MessageBubble';
 import { useConversation } from '../hooks/useConversation';
-import { USERS, Username } from '../types/messaging';
 import { colors } from '../constants/colors';
 
 type Props = {
+  username: string;
   inviteCode: string;
+  // Sign out and go back to the join screen.
+  onLogout: () => void;
 };
 
-export function ChatScreen({ inviteCode }: Props) {
-  // Sprint 1: usernames are hardcoded, so the picker lets one phone act as either user.
-  const [activeUser, setActiveUser] = useState<Username>(USERS[0]);
+export function ChatScreen({ username, inviteCode, onLogout }: Props) {
   const { messages, loading, loadError, sending, send } = useConversation(
-    activeUser,
+    username,
     inviteCode,
   );
   const scrollRef = useRef<ScrollView>(null);
@@ -41,19 +41,11 @@ export function ChatScreen({ inviteCode }: Props) {
           <View style={styles.headerIcon}>
             <Text style={styles.headerIconText}>R</Text>
           </View>
-          <View style={styles.headerTitleGroup}>
-            <Text style={styles.headerTitle}>Roomie</Text>
-            <Text style={styles.headerSubtitle}>Your household, in sync</Text>
-          </View>
-          <View style={styles.onlineDot} />
-        </View>
-
-        <View style={styles.conversationHeader}>
-          <Text style={styles.conversationTitle}>House chat</Text>
-          <View style={styles.inviteCode}>
-            <Text style={styles.inviteLabel}>INVITE CODE</Text>
-            <Text style={styles.inviteValue}>{inviteCode}</Text>
-          </View>
+          {/* Temporary name until households can be named. */}
+          <Text style={styles.headerTitle}>House chat</Text>
+          <Pressable accessibilityRole="button" onPress={onLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutButtonText}>Log out</Text>
+          </Pressable>
         </View>
 
         {loading ? (
@@ -76,34 +68,14 @@ export function ChatScreen({ inviteCode }: Props) {
               <MessageBubble
                 key={message.id}
                 message={message}
-                isMine={message.username === activeUser}
+                isMine={message.username === username}
               />
             ))}
           </ScrollView>
         )}
 
         <View style={styles.composerArea}>
-          <Text style={styles.sendingAsLabel}>SENDING AS</Text>
-          <View style={styles.userPicker}>
-            {USERS.map((username) => {
-              const selected = username === activeUser;
-              return (
-                <Pressable
-                  key={username}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setActiveUser(username)}
-                  style={[styles.userOption, selected && styles.selectedUserOption]}
-                >
-                  <Text
-                    style={[styles.userOptionText, selected && styles.selectedUserOptionText]}
-                  >
-                    {username}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Text style={styles.sendingAsLabel}>SENDING AS {username.toUpperCase()}</Text>
           <Composer onSend={send} sending={sending} />
           <Text style={styles.demoFootnote}>
             Local preview only — this screen does not connect to the database yet.
@@ -129,7 +101,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
   },
   headerIcon: {
     width: 40,
@@ -144,56 +115,23 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
-  headerTitleGroup: {
+  headerTitle: {
     flex: 1,
     marginLeft: 12,
-  },
-  headerTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  headerSubtitle: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  onlineDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.online,
-  },
-  conversationHeader: {
-    paddingHorizontal: 22,
-    paddingVertical: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  conversationTitle: {
     color: colors.text,
     fontSize: 19,
     fontWeight: '700',
   },
-  inviteCode: {
-    alignItems: 'flex-end',
+  logoutButton: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: colors.primarySoft,
   },
-  inviteLabel: {
-    color: colors.textFaint,
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  inviteValue: {
+  logoutButtonText: {
     color: colors.primary,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 1.5,
-    marginTop: 4,
   },
   centered: {
     flex: 1,
@@ -232,28 +170,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
     marginBottom: 7,
-  },
-  userPicker: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  userOption: {
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: colors.surfaceMuted,
-    marginRight: 7,
-  },
-  selectedUserOption: {
-    backgroundColor: colors.primarySoft,
-  },
-  userOptionText: {
-    color: colors.textMuted,
-    fontSize: 11,
-  },
-  selectedUserOptionText: {
-    color: colors.primary,
-    fontWeight: '700',
   },
   demoFootnote: {
     color: colors.textFaint,
