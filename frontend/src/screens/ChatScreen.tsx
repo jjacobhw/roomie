@@ -15,6 +15,7 @@ import { Composer } from '../components/Composer';
 import { MessageBubble } from '../components/MessageBubble';
 import { useConversation } from '../hooks/useConversation';
 import { colors } from '../constants/colors';
+import { USING_MOCK } from '../config';
 
 type Props = {
   username: string;
@@ -77,9 +78,11 @@ export function ChatScreen({ username, inviteCode, onLogout }: Props) {
         <View style={styles.composerArea}>
           <Text style={styles.sendingAsLabel}>SENDING AS {username.toUpperCase()}</Text>
           <Composer onSend={send} sending={sending} />
-          <Text style={styles.demoFootnote}>
-            Local preview only — this screen does not connect to the database yet.
-          </Text>
+          {USING_MOCK && (
+            <Text style={styles.demoFootnote}>
+              Local preview only — this screen does not connect to the database yet.
+            </Text>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

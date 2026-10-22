@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { colors } from "../constants/colors";
+import { USING_MOCK } from "../config";
 import { createConversation, joinConversation } from "../services/messagingApi";
 import { USERS, Username } from "../types/messaging";
 import { INVITE_CODE_LENGTH, normalizeInviteCode } from "../utils/inviteCode";
@@ -153,9 +154,11 @@ export function JoinScreen({ onEnter }: Props) {
             {error && <Text style={styles.error}>{error}</Text>}
           </View>
 
-          <Text style={styles.hint}>
-            Try the code DEMO12 to join a fake-mock household
-          </Text>
+          {USING_MOCK && (
+            <Text style={styles.hint}>
+              Try the code DEMO12 to join a fake-mock household
+            </Text>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
