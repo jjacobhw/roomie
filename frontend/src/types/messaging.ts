@@ -25,7 +25,12 @@ export type MessagingErrorCode =
   | 'ALREADY_IN_CONVERSATION'
   | 'CONVERSATION_NOT_FOUND'
   | 'RATE_LIMITED'
-  | 'EMPTY_MESSAGE';
+  | 'EMPTY_MESSAGE'
+  // Only the real server can produce these:
+  | 'USER_NOT_FOUND'
+  | 'NOT_A_MEMBER'
+  | 'NETWORK_ERROR'
+  | 'SERVER_ERROR';
 
 export class MessagingError extends Error {
   code: MessagingErrorCode;
