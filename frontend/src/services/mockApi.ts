@@ -23,6 +23,20 @@ conversations.set("DEMO12", {
   ],
 });
 
+// Always exactly 6 characters (Math.random().toString(36) can come out shorter), and
+// never a code that's already taken.
+function generateInviteCode(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I, easy to read aloud
+  let code: string;
+  do {
+    code = Array.from(
+      { length: 6 },
+      () => alphabet[Math.floor(Math.random() * alphabet.length)],
+    ).join("");
+  } while (conversations.has(code));
+  return code;
+}
+
 function delay(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, FAKE_NETWORK_DELAY_MS));
 }
@@ -51,7 +65,7 @@ export async function createConversation(username: string): Promise<string> {
       `${username} is already in a chat`,
     );
   }
-  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  const inviteCode = generateInviteCode();
   conversations.set(inviteCode, {
     inviteCode,
     users: [username],

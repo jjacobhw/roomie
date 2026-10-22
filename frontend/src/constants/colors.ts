@@ -1,28 +1,29 @@
 // The app's color palette. Screens and components use these names instead of hex
 // values, so the whole look can be changed by editing the values below.
+// Theme: Home (blue = main, green = people, brown = warm neutrals)
 export const colors = {
   // Brand
-  primary: '#286A54', // header icon, my bubbles, send button, links
-  primaryDisabled: '#A9BDB2', // send button when it can't be pressed
-  primarySoft: '#E4F0E9', // selected-user pill
+  primary: '#2E6F95', // header icon, my bubbles, send button, links
+  primaryDisabled: '#A9C4D6', // send button when it can't be pressed
+  primarySoft: '#DCEAF3', // selected-user pill
   onPrimary: '#FFFFFF', // text/icons on top of the primary color
 
   // Surfaces
-  background: '#F8F8F6', // behind everything
+  background: '#FAF6F0', // behind everything
   surface: '#FFFFFF', // header, composer area, their bubbles
-  surfaceMuted: '#F2F3F0', // unselected pills, text input
-  border: '#ECECE8',
+  surfaceMuted: '#F1EAE0', // unselected pills, text input
+  border: '#E6DCCD',
 
   // Text
-  text: '#202521', // titles and message text
-  textMuted: '#777D75', // sender names, subtitles
-  textFaint: '#969A93', // timestamps, labels, placeholders, footnote
+  text: '#3B2A20', // titles and message text
+  textMuted: '#7A6556', // sender names, subtitles
+  textFaint: '#A8978A', // timestamps, labels, placeholders, footnote
 
   // Status
   error: '#B3402E',
-  online: '#55A77B',
+  online: '#5A9E5F',
 
   // Avatar for other people's messages
-  avatarBackground: '#DDE8E0',
-  avatarText: '#3E6B51',
+  avatarBackground: '#DDEBDD',
+  avatarText: '#3F6B3F',
 } as const;
