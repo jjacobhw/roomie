@@ -33,15 +33,24 @@ docs/       architecture and sprint notes
    ```
    cd backend && npm install && npm run dev
    ```
-   Check it at http://localhost:3000/health.
+   Check it at http://localhost:3000/health. 
+   `GET conversations` lists conversations.
+   `GET messages :inviteCode` lists a conversation's posts.
+   `GET users` lists all users in the database.
+   `GET users :inviteCode` lists all users in a conversation.
+   `ADD messages :username :inviteCode :message` creates a post for a household member. The POST
+   body is JSON in the form `{"username":"Alex","messageText":"Hello!"}`.
+   `ADD conversations :username` creates a conversation for a household member.
+   `ADD users :username :inviteCode` adds a user to a conversation.
+   `ADD users :username :password` creates an account for a user.
+   `DEL conversations :inviteCode` deletes a conversation.
+   `DEL users :username :inviteCode` removes a user from a conversation.
+   `DEL users :username` deletes a user's account. 
+   This prototype identifies senders by display name; use verified Firebase
+   authentication before relying on it for real accounts.
 3. Frontend:
    ```
    cd frontend && npm install && npm start
    ```
 
 Secrets live in the untracked root `.env`; `.env.example` lists the variable names.
-
-## Execution
-1. Run in terminal: cd frontend && npm start
-2. Enter username and password for your account for the Expo Go app
-3. Scan the given qr code
