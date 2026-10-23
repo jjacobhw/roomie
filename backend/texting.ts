@@ -42,6 +42,12 @@ export interface ConversationSummary {
     users: string[];
 }
 
+export type CreateMessageResult =
+    | { status: 'created'; message: Message }
+    | { status: 'conversation_not_found' }
+    | { status: 'not_member' }
+    | { status: 'ambiguous_user' };
+
 export async function getConversations(pgClient: PgClient): Promise<ConversationSummary[]> {
     const result = await pgClient.query<ConversationSummary>(
         `SELECT h.invite_code AS "inviteCode",
@@ -59,6 +65,65 @@ export async function getConversations(pgClient: PgClient): Promise<Conversation
     );
 
     return result.rows;
+}
+
+export async function createMessage(
+    pgClient: PgClient,
+    inviteCode: string,
+    username: string,
+    messageText: string
+): Promise<CreateMessageResult> {
+    const memberResult = await pgClient.query<{ id: string }>(
+        `SELECT u.id
+         FROM households h
+         JOIN household_members hm ON hm.household_id = h.id
+         JOIN users u ON u.id = hm.user_id
+         WHERE h.invite_code = $1 AND u.display_name = $2
+         LIMIT 2`,
+        [inviteCode, username]
+    );
+
+    if (memberResult.rows.length > 1) {
+        return { status: 'ambiguous_user' };
+    }
+
+    if (memberResult.rows.length === 0) {
+        const conversationResult = await pgClient.query(
+            'SELECT id FROM households WHERE invite_code = $1',
+            [inviteCode]
+        );
+        return conversationResult.rows.length === 0
+            ? { status: 'conversation_not_found' }
+            : { status: 'not_member' };
+    }
+
+    const result = await pgClient.query<{ createdAt: Date }>(
+        `INSERT INTO posts (household_id, author_id, body)
+         SELECT h.id, $2, $3
+         FROM households h
+         WHERE h.invite_code = $1
+           AND EXISTS (
+               SELECT 1
+               FROM household_members hm
+               WHERE hm.household_id = h.id AND hm.user_id = $2
+           )
+         RETURNING created_at AS "createdAt"`,
+        [inviteCode, memberResult.rows[0].id, messageText]
+    );
+
+    if (result.rows.length === 0) {
+        return { status: 'not_member' };
+    }
+
+    return {
+        status: 'created',
+        message: {
+            username,
+            messageText,
+            attachments: [],
+            timestamp: result.rows[0].createdAt,
+        },
+    };
 }
 
 export async function getMessages(
