@@ -6,6 +6,7 @@
 
 type QueryRow = any;
 
+// instantiating query row as an array of texts
 type QueryResult<T = QueryRow> = {
     rows: T[];
 };
@@ -379,10 +380,59 @@ export async function sendMessage(username: string, inviteCode: string, messageT
 /**
  * Upload a media file to the server.
  */
-//export function uploadMedia(file: File): void {
-    // TODO: Implement media upload functionality
-//}
+export function uploadMedia(file: File): void{
+    const token = localStorage.getItem('chat_auth_token');
+    const activeUserId = localStorage.getItem('chat_user_id') || 'unknown';
 
-// TODO: Implement both of these later if there is time
-// export function signInUser(username: string, password: string): void {}
+    const formdata = new FormData();
+    formdata.append('mediafile', file);
+
+    fetch('/api/chat/upload', {
+        method: 'POST',
+        headers: {'Authorization': `Bearer ${token}`},
+        body: formdata,
+    })
+    .then((response) => {
+        if (!response.ok) {
+            throw new Error(`Upload failed. Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then((result) => {
+        console.log('Media uploaded successfully:', result.data);
+        
+        // do we use socket.io? if so, we need this:
+        // socket.emit('sendMessage', result.data);
+    })
+    .catch((error) => {
+        console.error('Error handling media upload:', error);
+    });
+}
+
+export function signInUser(username: string, password: string): void {
+    const userinfo_dict = {username, password};
+    let attemptedUserID: string = 'nan';
+    fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(userinfo_dict),
+    })
+        .then((response) => {
+            if (!response.ok){
+                throw new Error('Invalid login or server error');
+            }
+            return response.json();
+        })
+        .then((result) => {
+            attemptedUserID = result.user.id;
+            localStorage.setItem('chat_auth_token', result.token);
+            console.log(`User ${attemptedUserID} signed in`);
+        })
+        .catch((error) => {
+            console.error('Sign-in failed for user ', attemptedUserID);
+            // also need to display error message for user in UI
+        });
+}
+
+// TODO: Implement this later if there is time
 // export function signOutUser(): void {}
