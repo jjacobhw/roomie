@@ -1,10 +1,8 @@
-import { config } from 'dotenv';
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
-import { Pool } from 'pg';
-import { resolve } from 'node:path';
 // CHANGED: getMessages is no longer imported from texting.ts (it's still there, just unused by
 // the server). GET /messages/:inviteCode now uses listMessages from households.ts instead.
 import { getConversations } from './texting';
+import { pool, verifyDatabase } from './db';
 // NEW: all the household logic (create, join, send, read) lives in households.ts.
 import {
   createHousehold,
@@ -14,14 +12,6 @@ import {
   sendHouseholdMessage,
 } from './households';
 
-config({ path: resolve(__dirname, '../.env') });
-
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('DATABASE_URL must be set in the environment or root .env file.');
-}
-
-const pool = new Pool({ connectionString: databaseUrl });
 const app = express();
 const port = Number(process.env.PORT) || 3000;
 
@@ -125,6 +115,22 @@ const handleError: ErrorRequestHandler = (error, _request, response, _next) => {
 
 app.use(handleError);
 
-app.listen(port, () => {
-  console.log(`Roomie API listening on port ${port}`);
+async function start(): Promise<void> {
+  await verifyDatabase();
+  const server = app.listen(port, () => {
+    console.log(`Roomie API listening on port ${port}`);
+  });
+
+  const shutdown = () => {
+    server.close(() => {
+      pool.end().finally(() => process.exit(0));
+    });
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+start().catch((error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
