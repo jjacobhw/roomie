@@ -1,7 +1,6 @@
-import { config } from 'dotenv';
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
-import { Pool } from 'pg';
-import { resolve } from 'node:path';
+// The Postgres pool (and .env loading) now lives in db.ts so scripts can share it.
+import { checkDatabase, pool } from './db';
 // CHANGED: getMessages is no longer imported from texting.ts (it's still there, just unused by
 // the server). GET /messages/:inviteCode now uses listMessages from households.ts instead.
 import { getConversations } from './texting';
@@ -14,14 +13,6 @@ import {
   sendHouseholdMessage,
 } from './households';
 
-config({ path: resolve(__dirname, '../.env') });
-
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error('DATABASE_URL must be set in the environment or root .env file.');
-}
-
-const pool = new Pool({ connectionString: databaseUrl });
 const app = express();
 const port = Number(process.env.PORT) || 3000;
 
@@ -29,6 +20,17 @@ app.use(express.json());
 
 app.get('/health', (_request, response) => {
   response.json({ status: 'ok' });
+});
+
+// Checks that the database (local or Neon) answers a query.
+app.get('/health/db', async (_request, response) => {
+  try {
+    const info = await checkDatabase();
+    response.json({ status: 'ok', database: info.database, serverTime: info.now });
+  } catch (error) {
+    console.error('Database health check failed:', error);
+    response.status(503).json({ status: 'error', error: 'Database unreachable' });
+  }
 });
 
 const listConversations: RequestHandler = async (_request, response, next) => {
