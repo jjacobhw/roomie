@@ -1,8 +1,8 @@
-// Shapes shared by the messaging UI, the mock API and (later) the real API.
-// They mirror the backend's Message/Conversation in backend/texting.ts.
+// Shapes shared by the screens, the mock API and the real API.
+// They mirror what the backend (backend/routes.ts) sends and accepts.
 
 export type Message = {
-  // The backend doesn't have message ids yet; the UI needs one for list keys.
+  // The backend doesn't send message ids; httpApi builds a stable one so lists have unique keys.
   id: string;
   username: string;
   messageText: string;
@@ -10,28 +10,38 @@ export type Message = {
   timestamp: string;
 };
 
-export type Conversation = {
-  inviteCode: string;
-  users: string[];
-  messages: Message[];
+// A signed-in account.
+export type AuthUser = {
+  id: string;
+  username: string;
 };
 
-// The hardcoded Sprint 1 users.
-// They match display_name in database/seeds/seed.sql, so the real server recognizes them.
-export const USERS = ['Alex', 'Sam', 'Taylor'] as const;
-export type Username = (typeof USERS)[number];
+// What sign up / sign in give back. The token goes with every other request.
+export type Session = {
+  user: AuthUser;
+  token: string;
+};
+
+// A household as GET /conversations describes it.
+export type ConversationSummary = {
+  inviteCode: string;
+  name: string;
+  users: string[];
+};
 
 // Why a request failed, so the UI can show a useful message.
 export type MessagingErrorCode =
-  | 'ALREADY_IN_CONVERSATION'
-  | 'CONVERSATION_NOT_FOUND'
-  | 'RATE_LIMITED'
-  | 'EMPTY_MESSAGE'
-  // Only the real server can produce these:
-  | 'USER_NOT_FOUND'
-  | 'NOT_A_MEMBER'
-  | 'NETWORK_ERROR'
-  | 'SERVER_ERROR';
+  | 'INVALID_INPUT' // 400: the server rejected a field (too short, too long...)
+  | 'EMPTY_MESSAGE' // 400 on send
+  | 'UNAUTHENTICATED' // 401: no token, or the session expired
+  | 'INVALID_CREDENTIALS' // 401 on sign in: wrong username or password
+  | 'NOT_A_MEMBER' // 403
+  | 'CONVERSATION_NOT_FOUND' // 404
+  | 'USERNAME_TAKEN' // 409 on sign up
+  | 'ALREADY_IN_CONVERSATION' // 409 on create/join: one household per user
+  | 'RATE_LIMITED' // 429: sending faster than once every 3 seconds
+  | 'NETWORK_ERROR' // the server couldn't be reached
+  | 'SERVER_ERROR'; // anything else
 
 export class MessagingError extends Error {
   code: MessagingErrorCode;
@@ -45,3 +55,8 @@ export class MessagingError extends Error {
     this.retryAfterMs = retryAfterMs;
   }
 }
+
+// Same limits the backend enforces on sign up, checked here first for faster feedback.
+export const USERNAME_MAX_LENGTH = 50;
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 256;

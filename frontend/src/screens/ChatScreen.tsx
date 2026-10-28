@@ -6,6 +6,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
   View,
@@ -19,17 +20,21 @@ import { USING_MOCK } from '../config';
 
 type Props = {
   username: string;
+  token: string;
   inviteCode: string;
-  // Sign out and go back to the join screen.
+  // Sign out and go back to the sign-in screen.
   onLogout: () => void;
+  // The server says the session is no longer valid.
+  onSessionExpired: () => void;
 };
 
-export function ChatScreen({ username, inviteCode, onLogout }: Props) {
+export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExpired }: Props) {
   const { messages, loading, loadError, sending, send } = useConversation(
-    username,
+    token,
     inviteCode,
+    onSessionExpired,
   );
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -42,8 +47,14 @@ export function ChatScreen({ username, inviteCode, onLogout }: Props) {
           <View style={styles.headerIcon}>
             <Text style={styles.headerIconText}>R</Text>
           </View>
-          {/* Temporary name until households can be named. */}
-          <Text style={styles.headerTitle}>House chat</Text>
+          <View style={styles.headerTitleGroup}>
+            {/* Temporary name until households can be named. */}
+            <Text style={styles.headerTitle}>House chat</Text>
+            {/* selectable: press and hold to copy the code and send it to a roommate. */}
+            <Text selectable style={styles.headerCode}>
+              Invite code: <Text style={styles.headerCodeValue}>{inviteCode}</Text>
+            </Text>
+          </View>
           <Pressable accessibilityRole="button" onPress={onLogout} style={styles.logoutButton}>
             <Text style={styles.logoutButtonText}>Log out</Text>
           </Pressable>
@@ -118,12 +129,24 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
   },
-  headerTitle: {
+  headerTitleGroup: {
     flex: 1,
     marginLeft: 12,
+  },
+  headerTitle: {
     color: colors.text,
     fontSize: 19,
     fontWeight: '700',
+  },
+  headerCode: {
+    color: colors.textFaint,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  headerCodeValue: {
+    color: colors.primary,
+    fontWeight: '700',
+    letterSpacing: 1.5,
   },
   logoutButton: {
     paddingVertical: 7,

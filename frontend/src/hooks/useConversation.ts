@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getMessages, sendMessage } from '../services/messagingApi';
 import { Message, MessagingError } from '../types/messaging';
 import { mergeMessages } from '../utils/messages';
@@ -9,26 +9,36 @@ export type SendResult =
   | { ok: true }
   | { ok: false; error: string; retryAfterMs?: number };
 
-// Loads a conversation's messages, keeps them fresh, and sends new ones.
-export function useConversation(username: string, inviteCode: string) {
+// Loads a household's messages, keeps them fresh, and sends new ones.
+// onSessionExpired runs when the server says the token is no longer valid (401),
+// so the app can send the user back to sign in.
+export function useConversation(token: string, inviteCode: string, onSessionExpired: () => void) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
+  // Always call the latest callback without restarting the polling timer when it changes.
+  const expiredRef = useRef(onSessionExpired);
+  expiredRef.current = onSessionExpired;
+
   useEffect(() => {
     // `cancelled` stops a slow response from updating state after we've left the screen
-    // or switched to another conversation.
+    // or switched to another household.
     let cancelled = false;
 
     async function refresh() {
       try {
-        const latest = await getMessages(inviteCode);
+        const latest = await getMessages(token, inviteCode);
         if (cancelled) return;
         setMessages((current) => mergeMessages(current, latest));
         setLoadError(null);
       } catch (e) {
         if (cancelled) return;
+        if (e instanceof MessagingError && e.code === 'UNAUTHENTICATED') {
+          expiredRef.current();
+          return;
+        }
         setLoadError(e instanceof Error ? e.message : 'Could not load messages');
       } finally {
         if (!cancelled) setLoading(false);
@@ -44,18 +54,19 @@ export function useConversation(username: string, inviteCode: string) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [inviteCode]);
+  }, [token, inviteCode]);
 
   const send = useCallback(
     async (messageText: string): Promise<SendResult> => {
       setSending(true);
       try {
-        const sent = await sendMessage(username, inviteCode, messageText);
+        const sent = await sendMessage(token, inviteCode, messageText);
         // Show it straight away instead of waiting for the next poll.
         setMessages((current) => mergeMessages(current, [sent]));
         return { ok: true };
       } catch (e) {
         if (e instanceof MessagingError) {
+          if (e.code === 'UNAUTHENTICATED') expiredRef.current();
           return { ok: false, error: e.message, retryAfterMs: e.retryAfterMs };
         }
         return { ok: false, error: 'Could not send message' };
@@ -63,7 +74,7 @@ export function useConversation(username: string, inviteCode: string) {
         setSending(false);
       }
     },
-    [username, inviteCode],
+    [token, inviteCode],
   );
 
   return { messages, loading, loadError, sending, send };
