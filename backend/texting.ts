@@ -6,6 +6,7 @@
 
 type QueryRow = any;
 
+// instantiating query row as an array of texts
 type QueryResult<T = QueryRow> = {
     rows: T[];
 };
@@ -41,7 +42,16 @@ export interface ConversationSummary {
     users: string[];
 }
 
-export async function getConversations(pgClient: PgClient): Promise<ConversationSummary[]> {
+export type CreateMessageResult =
+    | { status: 'created'; message: Message }
+    | { status: 'conversation_not_found' }
+    | { status: 'not_member' }
+    | { status: 'ambiguous_user' };
+
+export async function getConversations(
+    pgClient: PgClient,
+    userId: string
+): Promise<ConversationSummary[]> {
     const result = await pgClient.query<ConversationSummary>(
         `SELECT h.invite_code AS "inviteCode",
                 h.name,
@@ -53,11 +63,76 @@ export async function getConversations(pgClient: PgClient): Promise<Conversation
          FROM households h
          LEFT JOIN household_members hm ON hm.household_id = h.id
          LEFT JOIN users u ON u.id = hm.user_id
+         WHERE EXISTS (
+             SELECT 1
+             FROM household_members own_membership
+             WHERE own_membership.household_id = h.id AND own_membership.user_id = $1
+         )
          GROUP BY h.id
-         ORDER BY h.created_at DESC`
+         ORDER BY h.created_at DESC`,
+        [userId]
     );
 
     return result.rows;
+}
+
+export async function createMessage(
+    pgClient: PgClient,
+    inviteCode: string,
+    username: string,
+    messageText: string
+): Promise<CreateMessageResult> {
+    const memberResult = await pgClient.query<{ id: string }>(
+        `SELECT u.id
+         FROM households h
+         JOIN household_members hm ON hm.household_id = h.id
+         JOIN users u ON u.id = hm.user_id
+         WHERE h.invite_code = $1 AND u.display_name = $2
+         LIMIT 2`,
+        [inviteCode, username]
+    );
+
+    if (memberResult.rows.length > 1) {
+        return { status: 'ambiguous_user' };
+    }
+
+    if (memberResult.rows.length === 0) {
+        const conversationResult = await pgClient.query(
+            'SELECT id FROM households WHERE invite_code = $1',
+            [inviteCode]
+        );
+        return conversationResult.rows.length === 0
+            ? { status: 'conversation_not_found' }
+            : { status: 'not_member' };
+    }
+
+    const result = await pgClient.query<{ createdAt: Date }>(
+        `INSERT INTO posts (household_id, author_id, body)
+         SELECT h.id, $2, $3
+         FROM households h
+         WHERE h.invite_code = $1
+           AND EXISTS (
+               SELECT 1
+               FROM household_members hm
+               WHERE hm.household_id = h.id AND hm.user_id = $2
+           )
+         RETURNING created_at AS "createdAt"`,
+        [inviteCode, memberResult.rows[0].id, messageText]
+    );
+
+    if (result.rows.length === 0) {
+        return { status: 'not_member' };
+    }
+
+    return {
+        status: 'created',
+        message: {
+            username,
+            messageText,
+            attachments: [],
+            timestamp: result.rows[0].createdAt,
+        },
+    };
 }
 
 export async function getMessages(
@@ -379,10 +454,59 @@ export async function sendMessage(username: string, inviteCode: string, messageT
 /**
  * Upload a media file to the server.
  */
-//export function uploadMedia(file: File): void {
-    // TODO: Implement media upload functionality
-//}
+export function uploadMedia(file: File): void{
+    const token = localStorage.getItem('chat_auth_token');
+    const activeUserId = localStorage.getItem('chat_user_id') || 'unknown';
 
-// TODO: Implement both of these later if there is time
-// export function signInUser(username: string, password: string): void {}
+    const formdata = new FormData();
+    formdata.append('mediafile', file);
+
+    fetch('/api/chat/upload', {
+        method: 'POST',
+        headers: {'Authorization': `Bearer ${token}`},
+        body: formdata,
+    })
+    .then((response) => {
+        if (!response.ok) {
+            throw new Error(`Upload failed. Status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then((result) => {
+        console.log('Media uploaded successfully:', result.data);
+        
+        // do we use socket.io? if so, we need this:
+        // socket.emit('sendMessage', result.data);
+    })
+    .catch((error) => {
+        console.error('Error handling media upload:', error);
+    });
+}
+
+export function signInUser(username: string, password: string): void {
+    const userinfo_dict = {username, password};
+    let attemptedUserID: string = 'nan';
+    fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(userinfo_dict),
+    })
+        .then((response) => {
+            if (!response.ok){
+                throw new Error('Invalid login or server error');
+            }
+            return response.json();
+        })
+        .then((result) => {
+            attemptedUserID = result.user.id;
+            localStorage.setItem('chat_auth_token', result.token);
+            console.log(`User ${attemptedUserID} signed in`);
+        })
+        .catch((error) => {
+            console.error('Sign-in failed for user ', attemptedUserID);
+            // also need to display error message for user in UI
+        });
+}
+
+// TODO: Implement this later if there is time
 // export function signOutUser(): void {}

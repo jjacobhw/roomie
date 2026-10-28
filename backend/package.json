@@ -2,7 +2,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch server.ts",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "db:check": "tsx db-check.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
