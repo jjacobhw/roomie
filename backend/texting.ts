@@ -48,7 +48,10 @@ export type CreateMessageResult =
     | { status: 'not_member' }
     | { status: 'ambiguous_user' };
 
-export async function getConversations(pgClient: PgClient): Promise<ConversationSummary[]> {
+export async function getConversations(
+    pgClient: PgClient,
+    userId: string
+): Promise<ConversationSummary[]> {
     const result = await pgClient.query<ConversationSummary>(
         `SELECT h.invite_code AS "inviteCode",
                 h.name,
@@ -60,8 +63,14 @@ export async function getConversations(pgClient: PgClient): Promise<Conversation
          FROM households h
          LEFT JOIN household_members hm ON hm.household_id = h.id
          LEFT JOIN users u ON u.id = hm.user_id
+         WHERE EXISTS (
+             SELECT 1
+             FROM household_members own_membership
+             WHERE own_membership.household_id = h.id AND own_membership.user_id = $1
+         )
          GROUP BY h.id
-         ORDER BY h.created_at DESC`
+         ORDER BY h.created_at DESC`,
+        [userId]
     );
 
     return result.rows;
