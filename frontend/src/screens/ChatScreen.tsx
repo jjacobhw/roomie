@@ -19,15 +19,19 @@ import { USING_MOCK } from '../config';
 
 type Props = {
   username: string;
+  token: string;
   inviteCode: string;
-  // Sign out and go back to the join screen.
+  // Sign out and go back to the sign-in screen.
   onLogout: () => void;
+  // The server says the session is no longer valid.
+  onSessionExpired: () => void;
 };
 
-export function ChatScreen({ username, inviteCode, onLogout }: Props) {
+export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExpired }: Props) {
   const { messages, loading, loadError, sending, send } = useConversation(
-    username,
+    token,
     inviteCode,
+    onSessionExpired,
   );
   const scrollRef = useRef<ScrollView>(null);
 
