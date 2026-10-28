@@ -6,6 +6,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Text,
   View,
@@ -33,7 +34,7 @@ export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExp
     inviteCode,
     onSessionExpired,
   );
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   return (
     <SafeAreaView style={styles.safeArea}>
