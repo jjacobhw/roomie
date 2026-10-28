@@ -12,6 +12,22 @@ if (!databaseUrl) {
 }
 
 const pool = new Pool({ connectionString: databaseUrl });
+=======
+import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
+// The Postgres pool (and .env loading) now lives in db.ts so scripts can share it.
+import { checkDatabase, pool } from './db';
+// CHANGED: getMessages is no longer imported from texting.ts (it's still there, just unused by
+// the server). GET /messages/:inviteCode now uses listMessages from households.ts instead.
+import { getConversations } from './texting';
+// NEW: all the household logic (create, join, send, read) lives in households.ts.
+import {
+  createHousehold,
+  HttpError,
+  joinHousehold,
+  listMessages,
+  sendHouseholdMessage,
+} from './households';
+
 const app = express();
 const port = Number(process.env.PORT) || 3000;
 
