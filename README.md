@@ -132,3 +132,17 @@ expired tokens return `401`; non-members cannot read or post in a conversation.
    ```
 
 Secrets live in the untracked root `.env`; `.env.example` lists the variable names.
+
+## Deploying (test without Expo Go)
+**Backend (Render Web Service):** root directory `backend`, build `npm install && npm run build`,
+start `npm start`. Environment: `DATABASE_URL` (the Neon URL, no quotes) and optionally
+`NODE_VERSION=22`. Optional `CORS_ORIGINS` (comma-separated) limits which websites may call the
+API; when unset, any origin is allowed. Run `database/migrate.sh` against Neon after adding a migration.
+
+**Web app (Render Static Site):** root directory `frontend`, build `npm ci && npm run build:web`,
+publish directory `dist`. Set `EXPO_PUBLIC_API_URL` to the backend URL; it is baked in at build
+time, so redeploy after changing it.
+
+**Android APK:** `npm i -g eas-cli`, `eas login`, then from `frontend/` run
+`eas build -p android --profile preview`. The backend URL lives in `eas.json` under the `preview`
+profile. The first build asks to create an Expo project and adds its id to `app.json`; commit that.
