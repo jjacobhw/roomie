@@ -64,6 +64,12 @@ use HTTPS and Firebase token verification before using real accounts.
 | Leave conversation | `DELETE /conversations/:inviteCode/members` |
 | Delete own account | `DELETE /users/:username` (must match signed-in user) |
 | Sign out | `DELETE /sessions` |
+| Create chore list | `POST /chores/:invitecode/:username` |
+| Create chore | `POST /chores/:listId/:itemText` |
+| Mark chore complete | `UPDATE /chores/:ChoreItem/done` |
+| Mark chore incomplete | `UPDATE /chores/:ChoreItem/undone` |
+| Delete chore | `DELETE /chores/:ChoreItem` |
+| Delete chore list | `DELETE /chores/:listId` |
 
 For example, after signing in, send the token as `Authorization: Bearer <token>`.
 The backend derives the message author from that session; clients cannot choose
