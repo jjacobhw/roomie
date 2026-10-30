@@ -11,6 +11,9 @@ CSE 115A Fall 2026. A React Native roommate app; the first feature is a househol
 ## Sprint 1
 Send and receive messages between users, with a server-enforced 3-second cooldown per sender.
 
+## Sprint 2
+Implement chores and user ties. Functionality is limited depending on what a user does/doesn't do in their group.
+
 ## Team
 Frontend: Sopeck. Backend: Nikhil and Austin. Database: Jacob and Enoch. Auth: TBA.
 
