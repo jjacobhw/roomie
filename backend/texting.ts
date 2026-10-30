@@ -6,7 +6,7 @@
 
 type QueryRow = any;
 
-// instantiating query row as an array of texts
+// Instantiating query row as an array of texts
 type QueryResult<T = QueryRow> = {
     rows: T[];
 };
@@ -48,6 +48,13 @@ export type CreateMessageResult =
     | { status: 'not_member' }
     | { status: 'ambiguous_user' };
 
+/**
+ * GET /conversations
+ * Retrieves a list of conversations for the authenticated user.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param userId The ID of the authenticated user.
+ * @returns A promise that resolves to an array of ConversationSummary objects.
+ */
 export async function getConversations(
     pgClient: PgClient,
     userId: string
@@ -76,6 +83,13 @@ export async function getConversations(
     return result.rows;
 }
 
+/**
+* GET /conversations/:inviteCode/messages
+* Retrieves a list of messages for the specified conversation.
+* @param pgClient The PostgreSQL client to use for the query.
+* @param inviteCode The invite code of the conversation.
+* @returns A promise that resolves to an array of Message objects or null if the conversation is not found.
+*/
 export async function createMessage(
     pgClient: PgClient,
     inviteCode: string,
@@ -135,6 +149,13 @@ export async function createMessage(
     };
 }
 
+/**
+* GET /conversations/:inviteCode/messages
+* Retrieves a list of messages for the specified conversation.
+* @param pgClient The PostgreSQL client to use for the query.
+* @param inviteCode The invite code of the conversation.
+* @returns A promise that resolves to an array of Message objects or null if the conversation is not found.
+*/ 
 export async function getMessages(
     pgClient: PgClient,
     inviteCode: string
@@ -164,8 +185,11 @@ export async function getMessages(
 }
 
 /**
- * Creates a user account with a username and password, adds them to PostgreSQL,
- * and returns the user object.
+ * POST /users
+ * Creates a user account with a username and password and stores it in PostgreSQL.
+ * @param username The username of the user to create.
+ * @param password The password of the user to create.
+ * @returns The created User object.
  */
 export function createAccount(username: string, password: string): User {
     // Check if the username already exists in PostgreSQL
@@ -195,7 +219,11 @@ export function createAccount(username: string, password: string): User {
 }
 
 /**
+ * Has no API command.
  * Update the user's username in PostgreSQL.
+ * @param oldUsername The current username of the user.
+ * @param newUsername The new username to update to.
+ * @returns A boolean indicating whether the update was successful.
  */
 export function updateProfileUsername(oldUsername: string, newUsername: string): boolean {
     // Check if the old username exists in PostgreSQL
@@ -214,7 +242,11 @@ export function updateProfileUsername(oldUsername: string, newUsername: string):
 }
 
 /**
+ * Has no API command.
  * Update the user's profile picture (avatar URL) in PostgreSQL.
+ * @param username The username of the user.
+ * @param avatarUrl The new avatar URL to update to.
+ * @returns A boolean indicating whether the update was successful.
  */
 export function updateProfilePic(username: string, avatarUrl: string): boolean {
     // Check if the user exists in PostgreSQL
@@ -233,7 +265,10 @@ export function updateProfilePic(username: string, avatarUrl: string): boolean {
 }
 
 /**
+ * DELETE /users/:username
  * Delete the user's account from PostgreSQL.
+ * @param username The username of the user to delete.
+ * @returns A boolean indicating whether the deletion was successful.
  */
 export function deleteAccount(username: string): boolean {
     // Check if the user exists in PostgreSQL
@@ -261,8 +296,11 @@ export function deleteAccount(username: string): boolean {
 }
 
 /**
+ * POST /conversations
  * Initialize a chat room in PostgreSQL associated with the given username
  * and return an invite code to it.
+ * @param username The username of the user creating the conversation.
+ * @returns A promise that resolves to the invite code of the created conversation or '-1' if an error occurred.
  */
 export async function createConversation(username: string): Promise<string> {
     // Check if username exists in PostgreSQL
@@ -305,7 +343,11 @@ export async function createConversation(username: string): Promise<string> {
 }
 
 /**
+ * POST /conversations/:inviteCode/members
  * Add user to the conversation in PostgreSQL associated with the given invite code.
+ * @param username The username of the user to add to the conversation.
+ * @param inviteCode The invite code of the conversation.
+ * @returns A boolean indicating whether the user was successfully added to the conversation.
  */
 export async function joinConversation(username: string, inviteCode: string): Promise<boolean> {
     // Check if username exists in PostgreSQL
@@ -336,7 +378,10 @@ export async function joinConversation(username: string, inviteCode: string): Pr
 }
 
 /**
+ * Has no API command.
  * Refresh messages in conversation to the user's screen.
+ * @param inviteCode The invite code of the conversation.
+ * @returns A boolean indicating whether the refresh was successful.
  */
 export async function getConversation(inviteCode: string): Promise<boolean> {
     const conversationRef = pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
@@ -364,7 +409,11 @@ export async function getConversation(inviteCode: string): Promise<boolean> {
 }
 
 /**
+ * DELETE /conversations/:inviteCode/members
  * Remove a user from the conversation in PostgreSQL associated with the given invite code.
+ * @param username The username of the user to remove from the conversation.
+ * @param inviteCode The invite code of the conversation.
+ * @returns A boolean indicating whether the user was successfully removed from the conversation.
  */
 export async function leaveConversation(username: string, inviteCode: string): Promise<boolean> {
     // Check if the conversation with the given invite code exists in PostgreSQL
@@ -396,7 +445,10 @@ export async function leaveConversation(username: string, inviteCode: string): P
 }
 
 /**
+ * DELETE /conversations/:inviteCode
  * Delete a conversation from PostgreSQL associated with the given invite code.
+ * @param inviteCode The invite code of the conversation to delete.
+ * @returns A boolean indicating whether the deletion was successful.
  */
 export async function deleteConversation(inviteCode: string): Promise<boolean> {
     // Check if the conversation with the given invite code exists in PostgreSQL
@@ -420,7 +472,13 @@ export async function deleteConversation(inviteCode: string): Promise<boolean> {
 }
 
 /**
+ * POST /messages/:inviteCode
  * Add a message to the front of the queue in the specified conversation.
+ * @param username The username of the sender.
+ * @param inviteCode The invite code of the conversation.
+ * @param messageText The text of the message to send.
+ * @param attachments Optional attachments for the message.
+ * @returns A boolean indicating whether the message was successfully sent.
  */
 export async function sendMessage(username: string, inviteCode: string, messageText: string, attachments: unknown = []): Promise<boolean> {
     // Check if the conversation with the given invite code exists in PostgreSQL
@@ -452,7 +510,10 @@ export async function sendMessage(username: string, inviteCode: string, messageT
 }
 
 /**
+ * TODO: Implement API command after testing.
  * Upload a media file to the server.
+ * @param file The media file to upload.
+ * @returns A boolean indicating whether the upload was successful.
  */
 export function uploadMedia(file: File): void{
     const token = localStorage.getItem('chat_auth_token');
@@ -483,6 +544,13 @@ export function uploadMedia(file: File): void{
     });
 }
 
+/**
+ * POST /sessions
+ * Authenticate a user and create a session in PostgreSQL.
+ * @param username Username of the user signing in
+ * @param password Password of the user signing in
+ * @returns void
+ */
 export function signInUser(username: string, password: string): void {
     const userinfo_dict = {username, password};
     let attemptedUserID: string = 'nan';
@@ -507,6 +575,3 @@ export function signInUser(username: string, password: string): void {
             // also need to display error message for user in UI
         });
 }
-
-// TODO: Implement this later if there is time
-// export function signOutUser(): void {}
