@@ -8,6 +8,17 @@ export type Message = {
   messageText: string;
   // ISO string, because JSON can't carry Date objects over the network.
   timestamp: string;
+  // Files sent with the message. Empty for plain text.
+  attachments: MessageAttachment[];
+};
+
+// A file inside a message. `url` is a temporary download link from the server.
+export type MessageAttachment = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  url: string;
 };
 
 // A signed-in account.
@@ -40,6 +51,8 @@ export type MessagingErrorCode =
   | 'USERNAME_TAKEN' // 409 on sign up
   | 'ALREADY_IN_CONVERSATION' // 409 on create/join: one household per user
   | 'RATE_LIMITED' // 429: sending faster than once every 3 seconds
+  | 'FILE_TOO_LARGE' // 413 on upload
+  | 'UNSUPPORTED_FILE' // 415 on upload
   | 'NETWORK_ERROR' // the server couldn't be reached
   | 'SERVER_ERROR'; // anything else
 
@@ -60,3 +73,46 @@ export class MessagingError extends Error {
 export const USERNAME_MAX_LENGTH = 50;
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 256;
+
+// A file the user picked, as expo-document-picker describes it.
+export type PickedFile = {
+  uri: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+// A file that is fully uploaded and recorded as 'complete' on the server.
+export type UploadedAttachment = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+};
+
+// Same rules the backend enforces on uploads (backend/uploads.ts), checked here first for faster feedback.
+export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const ATTACHMENT_CONTENT_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/heic',
+  'application/pdf',
+  'text/plain',
+];
+
+// Pictures the chat draws inline. HEIC is left out because most browsers can't display it.
+export function isPreviewableImage(contentType: string): boolean {
+  return ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(contentType.toLowerCase());
+}
+
+// Throws the same errors the server would, before any network call is made.
+export function checkAttachment(file: PickedFile): void {
+  if (!ATTACHMENT_CONTENT_TYPES.includes(file.mimeType.toLowerCase())) {
+    throw new MessagingError('UNSUPPORTED_FILE', 'That file type can’t be sent. Use an image, PDF, or text file.');
+  }
+  if (file.sizeBytes < 1 || file.sizeBytes > ATTACHMENT_MAX_BYTES) {
+    throw new MessagingError('FILE_TOO_LARGE', 'Files must be between 1 byte and 10 MB.');
+  }
+}
