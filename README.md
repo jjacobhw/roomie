@@ -13,6 +13,8 @@ Send and receive messages between users, with a server-enforced 3-second cooldow
 
 ## Sprint 2
 Implement chores and user ties. Functionality is limited depending on what a user does/doesn't do in their group.
+Users have a complete/incomplete status on their chores/tasks in a roommate group. This is enforced in chores.ts by
+add/update functions to set and update a status for each user.
 
 ## Team
 Frontend: Sopeck. Backend: Nikhil and Austin. Database: Jacob and Enoch. Auth: TBA.
