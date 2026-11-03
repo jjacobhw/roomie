@@ -52,11 +52,14 @@ use HTTPS and Firebase token verification before using real accounts.
 | List messages | `GET /messages/:inviteCode` |
 | List all users | `GET /users` |
 | List conversation members | `GET /conversations/:inviteCode/users` |
-| Send message | `POST /messages/:inviteCode` with `{"messageText":"Hello!"}` |
+| Send message | `POST /messages/:inviteCode` with `{"messageText":"Hello!"}`, optionally `"attachmentIds":[...]` |
 | Create conversation | `POST /conversations` with optional `{"name":"House chat"}` |
 | Join conversation | `POST /conversations/:inviteCode/members` |
 | Delete conversation | `DELETE /conversations/:inviteCode` (owner only) |
 | Leave conversation | `DELETE /conversations/:inviteCode/members` |
+| Request upload URL | `POST /conversations/:inviteCode/attachments` with `{"fileName":"pic.png","contentType":"image/png","sizeBytes":12345}` |
+| Mark upload complete | `POST /attachments/:attachmentId/complete` (uploader only) |
+| Get download URL | `GET /attachments/:attachmentId` (household members, complete files only) |
 | Delete own account | `DELETE /users/:username` (must match signed-in user) |
 | Sign out | `DELETE /sessions` |
 
@@ -67,6 +70,34 @@ another username as the sender. A sender can post once every three seconds.
 For Expo Go on a physical phone, replace `localhost` in the API URL with your
 computer's LAN IP (for example `http://192.168.1.25:3000`). Keep the phone and
 computer on the same network.
+
+### File uploads
+
+Files go straight to S3-compatible storage (AWS S3, Cloudflare R2, MinIO); the API only signs URLs.
+
+1. `POST /conversations/:inviteCode/attachments` checks membership, type, and size (images, PDF, or
+   plain text, up to 10 MB), inserts an `attachments` row with status `pending`, and returns
+   `uploadUrl` and `uploadHeaders`. The URL expires after 5 minutes.
+2. The client `PUT`s the raw file bytes to `uploadUrl` with the returned `Content-Type` header. The
+   content type and size are signed, so a different file is rejected by the storage service.
+3. `POST /attachments/:attachmentId/complete` checks the object exists with the declared size and
+   sets the status to `complete` (409 if it is missing or the size differs). Calling it again is safe.
+
+Set `S3_BUCKET` in the root `.env` (plus `S3_REGION`, `S3_ENDPOINT` for R2/MinIO, and
+`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`). Without `S3_BUCKET` the upload route returns 503. The
+bucket needs a CORS rule allowing `PUT` from the web app's origin. Apply the new table with
+`./database/setup-local.sh` (or `database/migrate.sh`).
+
+#### Sending files in a message
+
+After an upload is `complete`, pass its id in `attachmentIds` (up to 5) when sending. The text may
+be empty if there is at least one attachment. Only your own finished uploads in that household can
+be attached, and each file can be sent once; otherwise the request fails with 400. Message
+responses (`GET /messages/:inviteCode` and the send response) include
+`attachments: [{id, fileName, contentType, sizeBytes, url}]`. `url` is a temporary download link,
+signed per hour so it stays the same across polls. The app shows JPEG, PNG, GIF, and WebP files as
+inline pictures (tap for full size); other files appear as a tappable chip. Run
+`./database/setup-local.sh` to apply migration 004.
 
 ### Smoke test with curl
 

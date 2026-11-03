@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { SendResult, UploadResult } from '../hooks/useConversation';
 import { colors } from '../constants/colors';
 import { ATTACHMENT_CONTENT_TYPES, PickedFile, isPreviewableImage } from '../types/messaging';
@@ -16,7 +17,7 @@ type Props = {
 // `uri` is the local copy, used for the thumbnail.
 type Attached = { id: string; name: string; mimeType: string; uri: string };
 
-// The text box, paperclip and send button. Keeps its own draft text and the file waiting to
+// The text box, photo and file buttons, and send button. Keeps its own draft text and the file waiting to
 // be sent, and shows send and upload errors (like the 3-second limit) underneath.
 export function Composer({ onSend, sending, onAttach, uploading }: Props) {
   const [draft, setDraft] = useState('');
@@ -38,6 +39,17 @@ export function Composer({ onSend, sending, onAttach, uploading }: Props) {
     }
   }
 
+  // Uploads a picked file and, on success, holds it until the send button is pressed.
+  async function upload(file: PickedFile) {
+    const result = await onAttach(file);
+    if (result.ok) {
+      // Wait for the send button: the file goes out with the next message.
+      setAttached({ id: result.attachment.id, name: file.name, mimeType: file.mimeType, uri: file.uri });
+    } else {
+      setError(result.error);
+    }
+  }
+
   async function handleAttach() {
     if (uploading) return;
     setError(null);
@@ -53,13 +65,27 @@ export function Composer({ onSend, sending, onAttach, uploading }: Props) {
     // Some pickers don't report a size; read it from the file so the limit check is accurate.
     const sizeBytes = asset.size ?? (await (await fetch(asset.uri)).blob()).size;
     const mimeType = asset.mimeType ?? 'application/octet-stream';
-    const result = await onAttach({ uri: asset.uri, name: asset.name, mimeType, sizeBytes });
-    if (result.ok) {
-      // Wait for the send button: the file goes out with the next message.
-      setAttached({ id: result.attachment.id, name: asset.name, mimeType, uri: asset.uri });
-    } else {
-      setError(result.error);
-    }
+    await upload({ uri: asset.uri, name: asset.name, mimeType, sizeBytes });
+  }
+
+  async function handlePickPhoto() {
+    if (uploading) return;
+    setError(null);
+
+    // The system photo picker needs no permission on iOS 14+.
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      // Below 1 makes iOS re-encode HEIC photos as JPEG, which every device can show.
+      quality: 0.8,
+    });
+    if (picked.canceled || picked.assets.length === 0) return;
+
+    const asset = picked.assets[0];
+    const sizeBytes = asset.fileSize ?? (await (await fetch(asset.uri)).blob()).size;
+    const mimeType = asset.mimeType ?? 'image/jpeg';
+    const name = asset.fileName ?? `photo-${Date.now()}.${mimeType.split('/')[1] ?? 'jpg'}`;
+    await upload({ uri: asset.uri, name, mimeType, sizeBytes });
   }
 
   return (
@@ -100,6 +126,15 @@ export function Composer({ onSend, sending, onAttach, uploading }: Props) {
           style={styles.input}
           value={draft}
         />
+        <Pressable
+          accessibilityLabel="Attach photo"
+          accessibilityRole="button"
+          disabled={uploading}
+          onPress={handlePickPhoto}
+          style={styles.attachButton}
+        >
+          <Text style={styles.attachButtonText}>🖼️</Text>
+        </Pressable>
         <Pressable
           accessibilityLabel="Attach file"
           accessibilityRole="button"
