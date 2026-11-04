@@ -4,11 +4,15 @@
 import {
   ConversationSummary,
   Message,
+  MessageAttachment,
   MessagingError,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  PickedFile,
   Session,
+  UploadedAttachment,
   USERNAME_MAX_LENGTH,
+  checkAttachment,
 } from '../types/messaging';
 
 const FAKE_NETWORK_DELAY_MS = 250;
@@ -22,6 +26,8 @@ const accounts = new Map<string, Account>(); // lowercase username -> account
 const sessions = new Map<string, string>(); // token -> lowercase username
 const houses = new Map<string, House>();
 const lastSentAt = new Map<string, number>(); // lowercase username -> time of last message
+// "Uploaded" files waiting to be sent, by id. The picked file's own uri stands in for a download link.
+const uploads = new Map<string, MessageAttachment & { owner: string }>();
 
 // A ready-made household so "join with code" can be tried straight away. Its only member
 // is not a real account, so a new account is free to join it.
@@ -35,6 +41,7 @@ houses.set('DEMO12', {
       username: 'Austin ligmarche',
       messageText: 'Welcome to the crib chat!',
       timestamp: new Date().toISOString(),
+      attachments: [],
     },
   ],
 });
@@ -161,15 +168,28 @@ export async function getMessages(token: string, inviteCode: string): Promise<Me
   return [...memberHouse(accountFor(token), inviteCode).messages];
 }
 
-export async function sendMessage(token: string, inviteCode: string, messageText: string): Promise<Message> {
+export async function sendMessage(
+  token: string,
+  inviteCode: string,
+  messageText: string,
+  attachmentIds: string[] = [],
+): Promise<Message> {
   await delay();
   const account = accountFor(token);
   const house = memberHouse(account, inviteCode);
 
   const text = messageText.trim();
-  if (text.length < 1 || text.length > MAX_MESSAGE_LENGTH) {
+  if (text.length > MAX_MESSAGE_LENGTH || (text.length < 1 && attachmentIds.length === 0)) {
     throw new MessagingError('EMPTY_MESSAGE', `messageText must be between 1 and ${MAX_MESSAGE_LENGTH} characters.`);
   }
+  // Like the server: only your own uploads, and each file can be sent once.
+  const attachments = attachmentIds.map((id) => {
+    const upload = uploads.get(id);
+    if (!upload || upload.owner !== account.username) {
+      throw new MessagingError('INVALID_INPUT', 'One or more attachments are missing, unfinished, or already sent.');
+    }
+    return upload;
+  });
 
   const key = account.username.toLowerCase();
   const now = Date.now();
@@ -183,8 +203,33 @@ export async function sendMessage(token: string, inviteCode: string, messageText
     username: account.username,
     messageText: text,
     timestamp: new Date(now).toISOString(),
+    attachments: attachments.map(({ owner, ...attachment }) => attachment),
   };
+  attachmentIds.forEach((id) => uploads.delete(id));
   house.messages.push(message);
   lastSentAt.set(key, now);
   return message;
+}
+
+// Pretends to upload: same checks as the real flow, but nothing is stored.
+export async function uploadAttachment(
+  token: string,
+  inviteCode: string,
+  file: PickedFile,
+): Promise<UploadedAttachment> {
+  await delay();
+  const account = accountFor(token);
+  memberHouse(account, inviteCode);
+  checkAttachment(file);
+  await delay();
+  const id = randomId();
+  uploads.set(id, {
+    id,
+    owner: account.username,
+    fileName: file.name,
+    contentType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    url: file.uri,
+  });
+  return { id, fileName: file.name, contentType: file.mimeType, sizeBytes: file.sizeBytes };
 }

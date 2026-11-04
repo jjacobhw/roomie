@@ -29,7 +29,7 @@ type Props = {
 };
 
 export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExpired }: Props) {
-  const { messages, loading, loadError, sending, send } = useConversation(
+  const { messages, loading, loadError, sending, send, uploading, upload } = useConversation(
     token,
     inviteCode,
     onSessionExpired,
@@ -88,7 +88,7 @@ export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExp
 
         <View style={styles.composerArea}>
           <Text style={styles.sendingAsLabel}>SENDING AS {username.toUpperCase()}</Text>
-          <Composer onSend={send} sending={sending} />
+          <Composer onSend={send} sending={sending} onAttach={upload} uploading={uploading} />
           {USING_MOCK && (
             <Text style={styles.demoFootnote}>
               Local preview only — this screen does not connect to the database yet.

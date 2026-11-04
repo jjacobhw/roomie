@@ -4,6 +4,8 @@
  * All error messages are logged to the console.
  */
 
+import { publicAttachment, type StoredAttachment } from './storage';
+
 export type QueryRow = Record<string, unknown>;
 
 export type QueryResult<T = QueryRow> = {
@@ -192,7 +194,17 @@ export async function getMessages(
   const result = await pgClient.query<Record<string, unknown>>(
     `SELECT u.display_name AS username,
             p.body AS "messageText",
-            ARRAY[]::text[] AS attachments,
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                         'id', a.id,
+                         'fileName', a.file_name,
+                         'contentType', a.content_type,
+                         'sizeBytes', a.size_bytes,
+                         'objectKey', a.object_key
+                     ) ORDER BY a.created_at, a.id)
+              FROM attachments a
+              WHERE a.post_id = p.id AND a.status = 'complete'
+            ), '[]'::json) AS attachments,
             p.created_at AS timestamp
      FROM posts p
      JOIN households h ON h.id = p.household_id
@@ -202,7 +214,18 @@ export async function getMessages(
     [inviteCode]
   );
 
-  return result.rows.map(normalizeMessage);
+  // The query returns storage keys; swap them for download URLs before anything leaves the server.
+  return Promise.all(
+    result.rows.map(async (row) => {
+      const message = normalizeMessage(row);
+      return {
+        ...message,
+        attachments: await Promise.all(
+          (message.attachments as StoredAttachment[]).map(publicAttachment)
+        ),
+      };
+    })
+  );
 }
 
 /**

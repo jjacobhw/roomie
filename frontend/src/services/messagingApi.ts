@@ -16,3 +16,4 @@ export const createConversation = api.createConversation;
 export const joinConversation = api.joinConversation;
 export const getMessages = api.getMessages;
 export const sendMessage = api.sendMessage;
+export const uploadAttachment = api.uploadAttachment;

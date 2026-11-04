@@ -13,10 +13,14 @@ import type {
 } from 'express';
 import type { Pool } from 'pg';
 import { getConversations, getMessages } from './texting';
+import { publicAttachment, type StoredAttachment } from './storage';
+import { registerUploadRoutes } from './uploads';
 
 const SESSION_LIFETIME_DAYS = 30;
 const MESSAGE_COOLDOWN_MS = 3000;
 const PASSWORD_KEY_LENGTH = 64;
+const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface AuthUser {
   id: string;
@@ -306,6 +310,8 @@ export function registerRoutes(app: Express, pool: Pool): void {
     response.json({ status: 'ok' });
   });
 
+  registerUploadRoutes(app, pool);
+
   app.post('/users', asyncRoute(async (request, response) => {
     const body: unknown = request.body;
     if (!isRecord(body) || typeof body.username !== 'string' || typeof body.password !== 'string') {
@@ -430,8 +436,33 @@ export function registerRoutes(app: Express, pool: Pool): void {
     }
 
     const messageText = body.messageText.trim();
-    if (messageText.length < 1 || messageText.length > 2000) {
-      response.status(400).json({ error: 'messageText must be between 1 and 2000 characters.' });
+
+    // Files are uploaded first (see uploads.ts); sending the message claims them by id.
+    let attachmentIds: string[] = [];
+    if (body.attachmentIds !== undefined) {
+      if (
+        !Array.isArray(body.attachmentIds)
+        || !body.attachmentIds.every((id) => typeof id === 'string' && UUID_PATTERN.test(id))
+      ) {
+        response.status(400).json({ error: 'attachmentIds must be an array of attachment ids.' });
+        return;
+      }
+      attachmentIds = [...new Set(body.attachmentIds.map((id: string) => id.toLowerCase()))];
+      if (attachmentIds.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+        response.status(400).json({
+          error: `A message can have at most ${MAX_ATTACHMENTS_PER_MESSAGE} attachments.`,
+        });
+        return;
+      }
+    }
+
+    // A message needs text, attachments, or both.
+    if (messageText.length > 2000 || (messageText.length < 1 && attachmentIds.length === 0)) {
+      response.status(400).json({
+        error: attachmentIds.length > 0
+          ? 'messageText must be at most 2000 characters.'
+          : 'messageText must be between 1 and 2000 characters.',
+      });
       return;
     }
 
@@ -461,14 +492,14 @@ export function registerRoutes(app: Express, pool: Pool): void {
         return;
       }
 
-      const result = await client.query<{ messageText: string; timestamp: Date }>(
+      const result = await client.query<{ id: string; messageText: string; timestamp: Date }>(
         `INSERT INTO posts (household_id, author_id, body)
          SELECT h.id, u.id, $3
          FROM households h
          JOIN household_members hm ON hm.household_id = h.id
          JOIN users u ON u.id = hm.user_id
          WHERE h.invite_code = $1 AND u.id = $2
-         RETURNING body AS "messageText", created_at AS timestamp`,
+         RETURNING id, body AS "messageText", created_at AS timestamp`,
         [routeParam(request, 'inviteCode'), request.authUser.id, messageText]
       );
 
@@ -486,12 +517,45 @@ export function registerRoutes(app: Express, pool: Pool): void {
         return;
       }
 
+      const { id: postId, ...message } = result.rows[0];
+      let attachments: StoredAttachment[] = [];
+      if (attachmentIds.length > 0) {
+        // Only your own finished uploads in this household that no other message has used.
+        const claimed = await client.query<StoredAttachment>(
+          `UPDATE attachments a
+           SET post_id = p.id
+           FROM posts p
+           WHERE p.id = $1
+             AND a.id = ANY($2::uuid[])
+             AND a.uploader_id = $3
+             AND a.household_id = p.household_id
+             AND a.status = 'complete'
+             AND a.post_id IS NULL
+           RETURNING a.id,
+                     a.file_name AS "fileName",
+                     a.content_type AS "contentType",
+                     a.size_bytes AS "sizeBytes",
+                     a.object_key AS "objectKey"`,
+          [postId, attachmentIds, request.authUser.id]
+        );
+        if (claimed.rows.length !== attachmentIds.length) {
+          await client.query('ROLLBACK');
+          response.status(400).json({
+            error: 'One or more attachments are missing, unfinished, or already sent.',
+          });
+          return;
+        }
+        attachments = attachmentIds.map(
+          (id) => claimed.rows.find((row) => row.id === id) as StoredAttachment
+        );
+      }
+
       await client.query('COMMIT');
       response.status(201).json({
         message: {
-          ...result.rows[0],
+          ...message,
           username: request.authUser.username,
-          attachments: [],
+          attachments: await Promise.all(attachments.map(publicAttachment)),
         },
       });
     } catch (error) {
@@ -668,7 +732,6 @@ export function registerRoutes(app: Express, pool: Pool): void {
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 200;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ITEM_ID_PATTERN = /^\d{1,18}$/;
 
 export interface ChoreItem {
