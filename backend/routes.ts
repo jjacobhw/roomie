@@ -18,12 +18,12 @@ const SESSION_LIFETIME_DAYS = 30;
 const MESSAGE_COOLDOWN_MS = 3000;
 const PASSWORD_KEY_LENGTH = 64;
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   username: string;
 }
 
-interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest extends Request {
   authUser: AuthUser;
   sessionTokenHash: string;
 }
@@ -37,11 +37,11 @@ declare global {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function routeParam(request: Request, name: string): string {
+export function routeParam(request: Request, name: string): string {
   const value = request.params[name];
   return Array.isArray(value) ? value[0] ?? '' : value ?? '';
 }
@@ -98,7 +98,7 @@ function asyncRoute(
   };
 }
 
-function authenticated(
+export function authenticated(
   pool: Pool,
   handler: (request: AuthenticatedRequest, response: Response) => Promise<void>
 ): RequestHandler {
@@ -161,7 +161,7 @@ async function listUsersInConversation(
   };
 }
 
-async function getConversationAccess(
+export async function getConversationAccess(
   pool: Pool,
   inviteCode: string,
   userId: string
