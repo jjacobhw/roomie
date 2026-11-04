@@ -12,7 +12,7 @@ import type {
   Response,
 } from 'express';
 import type { Pool } from 'pg';
-import { getConversations, getMessages } from './texting';
+import { getConversations, getMessages } from './services/texting';
 
 const SESSION_LIFETIME_DAYS = 30;
 const MESSAGE_COOLDOWN_MS = 3000;

@@ -1,4 +1,9 @@
-// son
+/**
+ * Roomie Chores Module
+ * This module provides functions to manage chore lists and items within the Roomie application.
+ * It includes interfaces for ChoreItem and ChoreList, as well as functions to add lists, 
+ * update item statuses, and delete items.
+ */
 
 export interface ChoreItem {
     id: string;
@@ -8,15 +13,22 @@ export interface ChoreItem {
 }
 
 export interface ChoreList {
-    id: string;
-    conversationId: string; // Ties the list directly to an active chat/conversation
+    username: string;       // User the list belongs to
+    inviteCode: string;     // Ties the list directly to an active chat/conversation
     title: string;
     items: ChoreItem[];
 }
 
-export function addList(conversationId: string, title: string): void {
+/**
+ * POST /chores/:inviteCode/:username
+ * Adds a new chore list to the specified conversation titled "username's Chores".
+ * @param inviteCode The invite code of the conversation.
+ * @param username The name of the user the list refers to.
+ * @returns void
+ */
+export function addList(inviteCode: string, username: string): void {
     const token = localStorage.getItem('chat_auth_token');
-    const payload = {conversationId, title};
+    const payload = {inviteCode, username};
 
     fetch('/api/lists', {
         method: 'POST',
@@ -36,6 +48,41 @@ export function addList(conversationId: string, title: string): void {
     .catch((error) => console.error('Error adding list:', error));
 }
 
+/**
+ * POST /chores/:listId/:itemText
+ * Adds a new chore item to the specified list.
+ * @param listId The ID of the list to which the item belongs.
+ * @param itemText The text of the new chore item.
+ * @returns void
+ */
+export function addListItem(listId: string, itemText: string): void {
+    const token = localStorage.getItem('chat_auth_token');
+    const payload = {text: itemText};
+
+    fetch(`/api/lists/${listId}/items`, {
+        method: 'POST',
+        headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+    })
+    .then((response) => {
+        if (!response.ok) throw new Error('Failed to add item to list');
+        return response.json();
+    })
+    .then((result) => {
+        console.log('Item added successfully:', result.data);
+    })
+    .catch((error) => console.error('Error adding item:', error));
+}
+
+/**
+ * UPDATE /chores/:ChoreItem/done
+ * Marks a chore item as done in the specified list.
+ * @param listId The ID of the list to which the item belongs.
+ * @param itemId The ID of the item to update.
+ */
 export function updateListItemDone(listId: string, itemId: string): void {
     const token = localStorage.getItem('chat_auth_token');
   
@@ -49,7 +96,13 @@ export function updateListItemDone(listId: string, itemId: string): void {
     })
     .catch((error) => console.error('Error updating item status:', error));
 }
-  
+ 
+/**
+ * UPDATE /chores/:ChoreItem/undone
+ * Marks a chore item as not done in the specified list.
+ * @param listId The ID of the list to which the item belongs.
+ * @param itemId The ID of the item to update.
+ */
 export function updateListItemNotDone(listId: string, itemId: string): void {
     const token = localStorage.getItem('chat_auth_token');
   
@@ -64,6 +117,11 @@ export function updateListItemNotDone(listId: string, itemId: string): void {
     .catch((error) => console.error('Error updating item status:', error));
 }
 
+/**
+ * DELETE /chores/:ChoreItem
+ * Deletes a chore item from the specified list.
+ * @param itemId The ID of the item to delete.
+ */
 export function deleteChoreItem(itemId: string): void {
     const token = localStorage.getItem('chat_auth_token');
     const activeUserId = localStorage.getItem('chat_user_id') || 'unknown';
@@ -86,3 +144,29 @@ export function deleteChoreItem(itemId: string): void {
     });
 }
 
+/**
+ * DELETE /chores/:listId
+ * Deletes a chore list and all its associated items.
+ * @param listId The ID of the list to delete.
+ */
+export function deleteChoreList(listId: string): void {
+    const token = localStorage.getItem('chat_auth_token');
+    const activeUserId = localStorage.getItem('chat_user_id') || 'unknown';
+  
+    fetch(`/api/chores/lists/${listId}`, {
+        method: 'DELETE',
+        headers: {
+        'Authorization': `Bearer ${token}`
+        }
+    })
+    .then((response) => {
+        if (!response.ok) {throw new Error(`Failed to delete list. Server returned ${response.status}`);}
+        return response.json();
+    })
+    .then(() => {
+        console.log(`Chore list ${listId} successfully purged by user ${activeUserId}.`);
+    })
+    .catch((error) => {
+        console.error(`Deletion pipeline failure for user ${activeUserId}:`, error);
+    });
+}
