@@ -49,6 +49,13 @@ Except signup, login, and health, requests require the bearer token returned
 by signup or login. Passwords are stored as scrypt hashes. This is a prototype:
 use HTTPS and Firebase token verification before using real accounts.
 
+Chore routes require an authenticated member of the household. Chore lists default
+to the signed-in user and a title of `"<username>'s chores"`; set `assignee` to a
+household member's username to assign it to them, or set it to `null` for a
+whole-house list. A custom title can be up to 80 characters, and chore text can
+be up to 200 characters. Successful list/item creation returns `201`, reads and
+updates return `200`, and deletes return `204`.
+
 | Action | Request |
 | --- | --- |
 | Create account | `POST /users` with `{"username":"Alex","password":"long-password"}` |
@@ -64,11 +71,11 @@ use HTTPS and Firebase token verification before using real accounts.
 | Leave conversation | `DELETE /conversations/:inviteCode/members` |
 | Delete own account | `DELETE /users/:username` (must match signed-in user) |
 | Sign out | `DELETE /sessions` |
-| Create chore list | `POST /chores/:invitecode/:username` |
-| Create chore | `POST /chores/:listId/:itemText` |
-| Mark chore complete | `UPDATE /chores/:ChoreItem/done` |
-| Mark chore incomplete | `UPDATE /chores/:ChoreItem/undone` |
-| Delete chore | `DELETE /chores/:ChoreItem` |
+| List household chores | `GET /conversations/:inviteCode/chores` |
+| Create chore list | `POST /conversations/:inviteCode/chores` with optional `{"title":"Kitchen","assignee":"Alex"}` |
+| Add chore to list | `POST /chores/:listId/items` with `{"text":"Take out the trash"}` |
+| Mark chore complete/incomplete | `PATCH /chores/items/:itemId` with `{"isDone":true}` or `{"isDone":false}` |
+| Delete chore | `DELETE /chores/items/:itemId` |
 | Delete chore list | `DELETE /chores/:listId` |
 
 For example, after signing in, send the token as `Authorization: Bearer <token>`.
