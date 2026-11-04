@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express, { type ErrorRequestHandler } from 'express';
 import { pool } from './db';
+import { registerChoreRoutes } from './choreRoutes';
 import { registerRoutes } from './routes';
 
 const app = express();
@@ -17,6 +18,7 @@ app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : true }));
 
 app.use(express.json());
 registerRoutes(app, pool);
+registerChoreRoutes(app, pool);
 
 const handleError: ErrorRequestHandler = (error, _request, response, _next) => {
   console.error('API request failed:', error);
