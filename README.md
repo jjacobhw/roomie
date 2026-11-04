@@ -11,6 +11,11 @@ CSE 115A Fall 2026. A React Native roommate app; the first feature is a househol
 ## Sprint 1
 Send and receive messages between users, with a server-enforced 3-second cooldown per sender.
 
+## Sprint 2
+Implement chores and user ties. Functionality is limited depending on what a user does/doesn't do in their group.
+Users have a complete/incomplete status on their chores/tasks in a roommate group. This is enforced in chores.ts by
+add/update functions to set and update a status for each user.
+
 ## Team
 Frontend: Sopeck. Backend: Nikhil and Austin. Database: Jacob and Enoch. Auth: TBA.
 
@@ -44,6 +49,13 @@ Except signup, login, and health, requests require the bearer token returned
 by signup or login. Passwords are stored as scrypt hashes. This is a prototype:
 use HTTPS and Firebase token verification before using real accounts.
 
+Chore routes require an authenticated member of the household. Chore lists default
+to the signed-in user and a title of `"<username>'s chores"`; set `assignee` to a
+household member's username to assign it to them, or set it to `null` for a
+whole-house list. A custom title can be up to 80 characters, and chore text can
+be up to 200 characters. Successful list/item creation returns `201`, reads and
+updates return `200`, and deletes return `204`.
+
 | Action | Request |
 | --- | --- |
 | Create account | `POST /users` with `{"username":"Alex","password":"long-password"}` |
@@ -62,6 +74,12 @@ use HTTPS and Firebase token verification before using real accounts.
 | Get download URL | `GET /attachments/:attachmentId` (household members, complete files only) |
 | Delete own account | `DELETE /users/:username` (must match signed-in user) |
 | Sign out | `DELETE /sessions` |
+| List household chores | `GET /conversations/:inviteCode/chores` |
+| Create chore list | `POST /conversations/:inviteCode/chores` with optional `{"title":"Kitchen","assignee":"Alex"}` |
+| Add chore to list | `POST /chores/:listId/items` with `{"text":"Take out the trash"}` |
+| Mark chore complete/incomplete | `PATCH /chores/items/:itemId` with `{"isDone":true}` or `{"isDone":false}` |
+| Delete chore | `DELETE /chores/items/:itemId` |
+| Delete chore list | `DELETE /chores/:listId` |
 
 For example, after signing in, send the token as `Authorization: Bearer <token>`.
 The backend derives the message author from that session; clients cannot choose
