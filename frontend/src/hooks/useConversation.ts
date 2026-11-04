@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getMessages, sendMessage } from '../services/messagingApi';
-import { Message, MessagingError } from '../types/messaging';
+import { getMessages, sendMessage, uploadAttachment } from '../services/messagingApi';
+import { Message, MessagingError, PickedFile, UploadedAttachment } from '../types/messaging';
 import { mergeMessages } from '../utils/messages';
 
 const POLL_INTERVAL_MS = 3000; // Sprint 1 has no WebSockets, so ask for new messages on a timer
@@ -8,6 +8,10 @@ const POLL_INTERVAL_MS = 3000; // Sprint 1 has no WebSockets, so ask for new mes
 export type SendResult =
   | { ok: true }
   | { ok: false; error: string; retryAfterMs?: number };
+
+export type UploadResult =
+  | { ok: true; attachment: UploadedAttachment }
+  | { ok: false; error: string };
 
 // Loads a household's messages, keeps them fresh, and sends new ones.
 // onSessionExpired runs when the server says the token is no longer valid (401),
@@ -17,6 +21,7 @@ export function useConversation(token: string, inviteCode: string, onSessionExpi
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // Always call the latest callback without restarting the polling timer when it changes.
   const expiredRef = useRef(onSessionExpired);
@@ -57,10 +62,10 @@ export function useConversation(token: string, inviteCode: string, onSessionExpi
   }, [token, inviteCode]);
 
   const send = useCallback(
-    async (messageText: string): Promise<SendResult> => {
+    async (messageText: string, attachmentIds: string[] = []): Promise<SendResult> => {
       setSending(true);
       try {
-        const sent = await sendMessage(token, inviteCode, messageText);
+        const sent = await sendMessage(token, inviteCode, messageText, attachmentIds);
         // Show it straight away instead of waiting for the next poll.
         setMessages((current) => mergeMessages(current, [sent]));
         return { ok: true };
@@ -77,5 +82,24 @@ export function useConversation(token: string, inviteCode: string, onSessionExpi
     [token, inviteCode],
   );
 
-  return { messages, loading, loadError, sending, send };
+  const upload = useCallback(
+    async (file: PickedFile): Promise<UploadResult> => {
+      setUploading(true);
+      try {
+        const attachment = await uploadAttachment(token, inviteCode, file);
+        return { ok: true, attachment };
+      } catch (e) {
+        if (e instanceof MessagingError) {
+          if (e.code === 'UNAUTHENTICATED') expiredRef.current();
+          return { ok: false, error: e.message };
+        }
+        return { ok: false, error: 'Could not upload file' };
+      } finally {
+        setUploading(false);
+      }
+    },
+    [token, inviteCode],
+  );
+
+  return { messages, loading, loadError, sending, send, uploading, upload };
 }

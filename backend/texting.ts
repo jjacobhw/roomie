@@ -1,512 +1,559 @@
-/*
+/**
  * Roomie Texting Module
  * Provides functions to manage user accounts, conversations, and messages in PostgreSQL.
  * All error messages are logged to the console.
  */
 
-type QueryRow = any;
+import { publicAttachment, type StoredAttachment } from './storage';
 
-// instantiating query row as an array of texts
-type QueryResult<T = QueryRow> = {
-    rows: T[];
+export type QueryRow = Record<string, unknown>;
+
+export type QueryResult<T = QueryRow> = {
+  rows: T[];
 };
 
-interface PgClient {
-    query: <T = QueryRow>(text: string, values?: unknown[]) => Promise<QueryResult<T>>;
+export interface PgClient {
+  query: <T = QueryRow>(text: string, values?: unknown[]) => Promise<QueryResult<T>>;
 }
 
-declare const pgClient: PgClient;
-
 export interface User {
-    name: string;           // The username of the user
-    password: string;       // The password of the user
-    avatarUrl: string;      // The URL of the user's avatar image
+  id?: string;
+  name: string;
+  password: string;
+  avatarUrl: string;
 }
 
 export interface Message {
-    username: string;       // The username of the sender
-    messageText: string;    // The contents of the message
-    attachments: unknown;   // The attachments of the message
-    timestamp: Date;        // The timestamp of the message
+  id?: string;
+  username: string;
+  messageText: string;
+  attachments: unknown[];
+  timestamp: Date | string;
 }
 
 export interface Conversation {
-    inviteCode: string;     // The invite code for the conversation
-    messages: Message[];    // The messages in the conversation
-    users: string[];        // The usernames of the users in the conversation
+  inviteCode: string;
+  name?: string;
+  messages: Message[];
+  users: string[];
 }
 
 export interface ConversationSummary {
-    inviteCode: string;
-    name: string;
-    users: string[];
+  inviteCode: string;
+  name: string;
+  users: string[];
 }
 
 export type CreateMessageResult =
-    | { status: 'created'; message: Message }
-    | { status: 'conversation_not_found' }
-    | { status: 'not_member' }
-    | { status: 'ambiguous_user' };
+  | { status: 'created'; message: Message }
+  | { status: 'conversation_not_found' }
+  | { status: 'not_member' }
+  | { status: 'ambiguous_user' };
 
+const toIsoString = (value: Date | string | null | undefined): string | null => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+function normalizeMessage(row: Record<string, unknown>): Message {
+  return {
+    id: typeof row.id === 'string' ? row.id : undefined,
+    username: String(row.username ?? ''),
+    messageText: String(row.messageText ?? ''),
+    attachments: Array.isArray(row.attachments) ? row.attachments : [],
+    timestamp: row.timestamp instanceof Date ? row.timestamp : (toIsoString(String(row.timestamp ?? new Date())) ?? new Date()),
+  };
+}
+
+/**
+ * GET /conversations
+ * Retrieves a list of conversations for the authenticated user.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param userId The ID of the authenticated user.
+ * @returns A promise that resolves to an array of ConversationSummary objects.
+ */
 export async function getConversations(
-    pgClient: PgClient,
-    userId: string
+  pgClient: PgClient,
+  userId: string
 ): Promise<ConversationSummary[]> {
-    const result = await pgClient.query<ConversationSummary>(
-        `SELECT h.invite_code AS "inviteCode",
-                h.name,
-                COALESCE(
-                    array_agg(u.display_name ORDER BY u.display_name)
-                        FILTER (WHERE u.id IS NOT NULL),
-                    ARRAY[]::text[]
-                ) AS users
-         FROM households h
-         LEFT JOIN household_members hm ON hm.household_id = h.id
-         LEFT JOIN users u ON u.id = hm.user_id
-         WHERE EXISTS (
-             SELECT 1
-             FROM household_members own_membership
-             WHERE own_membership.household_id = h.id AND own_membership.user_id = $1
-         )
-         GROUP BY h.id
-         ORDER BY h.created_at DESC`,
-        [userId]
-    );
+  const result = await pgClient.query<ConversationSummary>(
+    `SELECT h.invite_code AS "inviteCode",
+            h.name,
+            COALESCE(
+              array_agg(u.display_name ORDER BY u.display_name)
+                FILTER (WHERE u.id IS NOT NULL),
+              ARRAY[]::text[]
+            ) AS users
+     FROM households h
+     LEFT JOIN household_members hm ON hm.household_id = h.id
+     LEFT JOIN users u ON u.id = hm.user_id
+     WHERE EXISTS (
+       SELECT 1
+       FROM household_members own_membership
+       WHERE own_membership.household_id = h.id AND own_membership.user_id = $1
+     )
+     GROUP BY h.id, h.invite_code, h.name
+     ORDER BY h.created_at DESC`,
+    [userId]
+  );
 
-    return result.rows;
+  return result.rows.map((row) => ({
+    inviteCode: String(row.inviteCode ?? ''),
+    name: String(row.name ?? ''),
+    users: Array.isArray(row.users) ? row.users.map(String) : [],
+  }));
 }
 
+/**
+ * Create a new message in the specified conversation.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param inviteCode The invite code of the conversation.
+ * @param username The username of the sender.
+ * @param messageText The contents of the message.
+ * @returns A promise resolving to the created message result.
+ */
 export async function createMessage(
-    pgClient: PgClient,
-    inviteCode: string,
-    username: string,
-    messageText: string
+  pgClient: PgClient,
+  inviteCode: string,
+  username: string,
+  messageText: string
 ): Promise<CreateMessageResult> {
-    const memberResult = await pgClient.query<{ id: string }>(
-        `SELECT u.id
-         FROM households h
-         JOIN household_members hm ON hm.household_id = h.id
-         JOIN users u ON u.id = hm.user_id
-         WHERE h.invite_code = $1 AND u.display_name = $2
-         LIMIT 2`,
-        [inviteCode, username]
+  const memberResult = await pgClient.query<{ id: string }>(
+    `SELECT u.id
+     FROM households h
+     JOIN household_members hm ON hm.household_id = h.id
+     JOIN users u ON u.id = hm.user_id
+     WHERE h.invite_code = $1 AND u.display_name = $2
+     LIMIT 2`,
+    [inviteCode, username]
+  );
+
+  if (memberResult.rows.length > 1) {
+    return { status: 'ambiguous_user' };
+  }
+
+  if (memberResult.rows.length === 0) {
+    const conversationResult = await pgClient.query<{ id: string }>(
+      'SELECT id FROM households WHERE invite_code = $1',
+      [inviteCode]
     );
+    return conversationResult.rows.length === 0
+      ? { status: 'conversation_not_found' }
+      : { status: 'not_member' };
+  }
 
-    if (memberResult.rows.length > 1) {
-        return { status: 'ambiguous_user' };
-    }
+  const result = await pgClient.query<{ createdAt: Date }>(
+    `INSERT INTO posts (household_id, author_id, body)
+     SELECT h.id, $2, $3
+     FROM households h
+     WHERE h.invite_code = $1
+       AND EXISTS (
+         SELECT 1
+         FROM household_members hm
+         WHERE hm.household_id = h.id AND hm.user_id = $2
+       )
+     RETURNING created_at AS "createdAt"`,
+    [inviteCode, memberResult.rows[0].id, messageText]
+  );
 
-    if (memberResult.rows.length === 0) {
-        const conversationResult = await pgClient.query(
-            'SELECT id FROM households WHERE invite_code = $1',
-            [inviteCode]
-        );
-        return conversationResult.rows.length === 0
-            ? { status: 'conversation_not_found' }
-            : { status: 'not_member' };
-    }
+  if (result.rows.length === 0) {
+    return { status: 'not_member' };
+  }
 
-    const result = await pgClient.query<{ createdAt: Date }>(
-        `INSERT INTO posts (household_id, author_id, body)
-         SELECT h.id, $2, $3
-         FROM households h
-         WHERE h.invite_code = $1
-           AND EXISTS (
-               SELECT 1
-               FROM household_members hm
-               WHERE hm.household_id = h.id AND hm.user_id = $2
-           )
-         RETURNING created_at AS "createdAt"`,
-        [inviteCode, memberResult.rows[0].id, messageText]
-    );
-
-    if (result.rows.length === 0) {
-        return { status: 'not_member' };
-    }
-
-    return {
-        status: 'created',
-        message: {
-            username,
-            messageText,
-            attachments: [],
-            timestamp: result.rows[0].createdAt,
-        },
-    };
+  return {
+    status: 'created',
+    message: {
+      username,
+      messageText,
+      attachments: [],
+      timestamp: result.rows[0].createdAt,
+    },
+  };
 }
 
+/**
+ * GET /conversations/:inviteCode/messages
+ * Retrieves a list of messages for the specified conversation.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param inviteCode The invite code of the conversation.
+ * @returns A promise that resolves to a list of Message objects or null if the conversation is not found.
+ */
 export async function getMessages(
-    pgClient: PgClient,
-    inviteCode: string
+  pgClient: PgClient,
+  inviteCode: string
 ): Promise<Message[] | null> {
-    const conversationResult = await pgClient.query(
-        'SELECT id FROM households WHERE invite_code = $1',
-        [inviteCode]
-    );
-    if (conversationResult.rows.length === 0) {
-        return null;
-    }
+  const conversationResult = await pgClient.query<{ id: string }>(
+    'SELECT id FROM households WHERE invite_code = $1',
+    [inviteCode]
+  );
+  if (conversationResult.rows.length === 0) {
+    return null;
+  }
 
-    const result = await pgClient.query<Message>(
-        `SELECT u.display_name AS username,
-                p.body AS "messageText",
-                ARRAY[]::text[] AS attachments,
-                p.created_at AS timestamp
-         FROM posts p
-         JOIN households h ON h.id = p.household_id
-         JOIN users u ON u.id = p.author_id
-         WHERE h.invite_code = $1
-         ORDER BY p.created_at ASC`,
-        [inviteCode]
-    );
+  const result = await pgClient.query<Record<string, unknown>>(
+    `SELECT u.display_name AS username,
+            p.body AS "messageText",
+            COALESCE((
+              SELECT json_agg(json_build_object(
+                         'id', a.id,
+                         'fileName', a.file_name,
+                         'contentType', a.content_type,
+                         'sizeBytes', a.size_bytes,
+                         'objectKey', a.object_key
+                     ) ORDER BY a.created_at, a.id)
+              FROM attachments a
+              WHERE a.post_id = p.id AND a.status = 'complete'
+            ), '[]'::json) AS attachments,
+            p.created_at AS timestamp
+     FROM posts p
+     JOIN households h ON h.id = p.household_id
+     JOIN users u ON u.id = p.author_id
+     WHERE h.invite_code = $1
+     ORDER BY p.created_at ASC`,
+    [inviteCode]
+  );
 
-    return result.rows;
+  // The query returns storage keys; swap them for download URLs before anything leaves the server.
+  return Promise.all(
+    result.rows.map(async (row) => {
+      const message = normalizeMessage(row);
+      return {
+        ...message,
+        attachments: await Promise.all(
+          (message.attachments as StoredAttachment[]).map(publicAttachment)
+        ),
+      };
+    })
+  );
 }
 
 /**
- * Creates a user account with a username and password, adds them to PostgreSQL,
- * and returns the user object.
+ * POST /users
+ * Creates a user account with a username and password and stores it in PostgreSQL.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param username The username of the user to create.
+ * @param password The password of the user to create.
+ * @returns The created User object.
  */
-export function createAccount(username: string, password: string): User {
-    // Check if the username already exists in PostgreSQL
-    void pgClient.query('SELECT * FROM users WHERE name = $1', [username]).then((result) => {
-        if (result.rows.length > 0) {
-            console.error(`Username ${username} already exists.`);
-            return result.rows[0] as User;
-        }
-        return undefined;
-    });
+export async function createAccount(
+  pgClient: PgClient,
+  username: string,
+  password: string
+): Promise<User> {
+  const avatarUrl = 'https://kommodo.ai/i/zxasnXB2wNYSXfxpIr9N';
+  const existing = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
+    [username]
+  );
 
-    // Initialize the user object with the provided username and password, and a default avatar URL
-    const user: User = {
-        name: username,
-        password: password,
-        avatarUrl: 'https://kommodo.ai/i/zxasnXB2wNYSXfxpIr9N',
-    };
+  if (existing.rows.length > 0) {
+    throw new Error(`Username ${username} already exists.`);
+  }
 
-    // Add the new user into the PostgreSQL database
-    void pgClient.query('INSERT INTO users (name, password, avatarUrl) VALUES ($1, $2, $3)', [
-        username,
-        password,
-        'https://kommodo.ai/i/zxasnXB2wNYSXfxpIr9N',
-    ]);
+  const result = await pgClient.query<{ id: string; display_name: string; avatar_url: string }>(
+    `INSERT INTO users (display_name, password_hash, avatar_url)
+     VALUES ($1, $2, $3)
+     RETURNING id, display_name AS "display_name", avatar_url AS "avatar_url"`,
+    [username, password, avatarUrl]
+  );
 
-    return user;
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    name: row.display_name,
+    password,
+    avatarUrl: row.avatar_url ?? avatarUrl,
+  };
 }
 
 /**
+ * Has no API command.
  * Update the user's username in PostgreSQL.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param oldUsername The current username of the user.
+ * @param newUsername The new username to update to.
+ * @returns A boolean indicating whether the update was successful.
  */
-export function updateProfileUsername(oldUsername: string, newUsername: string): boolean {
-    // Check if the old username exists in PostgreSQL
-    void pgClient.query('SELECT * FROM users WHERE name = $1', [oldUsername]).then((result) => {
-        if (result.rows.length === 0) {
-            console.error(`User ${oldUsername} not found.`);
-            return false;
-        }
+export async function updateProfileUsername(
+  pgClient: PgClient,
+  oldUsername: string,
+  newUsername: string
+): Promise<boolean> {
+  const result = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
+    [oldUsername]
+  );
 
-        // If old username exists, update it to the new username
-        void pgClient.query('UPDATE users SET name = $1 WHERE name = $2', [newUsername, oldUsername]);
-        return true;
-    });
+  if (result.rows.length === 0) {
+    return false;
+  }
 
-    return true;
+  await pgClient.query('UPDATE users SET display_name = $1 WHERE display_name = $2', [newUsername, oldUsername]);
+  return true;
 }
 
 /**
+ * Has no API command.
  * Update the user's profile picture (avatar URL) in PostgreSQL.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param username The username of the user.
+ * @param avatarUrl The new avatar URL to update to.
+ * @returns A boolean indicating whether the update was successful.
  */
-export function updateProfilePic(username: string, avatarUrl: string): boolean {
-    // Check if the user exists in PostgreSQL
-    void pgClient.query('SELECT * FROM users WHERE name = $1', [username]).then((result) => {
-        if (result.rows.length === 0) {
-            console.error(`User ${username} not found.`);
-            return false;
-        }
+export async function updateProfilePic(
+  pgClient: PgClient,
+  username: string,
+  avatarUrl: string
+): Promise<boolean> {
+  const result = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
+    [username]
+  );
 
-        // If the user exists, update their avatar URL
-        void pgClient.query('UPDATE users SET avatarUrl = $1 WHERE name = $2', [avatarUrl, username]);
-        return true;
-    });
+  if (result.rows.length === 0) {
+    return false;
+  }
 
-    return true;
+  await pgClient.query('UPDATE users SET avatar_url = $1 WHERE display_name = $2', [avatarUrl, username]);
+  return true;
 }
 
 /**
+ * DELETE /users/:username
  * Delete the user's account from PostgreSQL.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param username The username of the user to delete.
+ * @returns A boolean indicating whether the deletion was successful.
  */
-export function deleteAccount(username: string): boolean {
-    // Check if the user exists in PostgreSQL
-    void pgClient.query('SELECT * FROM users WHERE name = $1', [username]).then((result) => {
-        if (result.rows.length === 0) {
-            console.error(`User ${username} not found.`);
-            return false;
-        }
+export async function deleteAccount(
+  pgClient: PgClient,
+  username: string
+): Promise<boolean> {
+  const result = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
+    [username]
+  );
 
-        // If the user exists, delete their account
-        void pgClient.query('DELETE FROM users WHERE name = $1', [username]);
+  if (result.rows.length === 0) {
+    return false;
+  }
 
-        // Verify that the user has been deleted
-        void pgClient.query('SELECT * FROM users WHERE name = $1', [username]).then((deletedResult) => {
-            if (deletedResult.rows.length !== 0) {
-                console.error(`Failed to delete user ${username}.`);
-                return false;
-            }
-            return true;
-        });
-        return true;
-    });
-
-    return true;
+  await pgClient.query('DELETE FROM users WHERE id = $1', [result.rows[0].id]);
+  return true;
 }
 
 /**
+ * POST /conversations
  * Initialize a chat room in PostgreSQL associated with the given username
  * and return an invite code to it.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param username The username of the user creating the conversation.
+ * @returns A promise that resolves to the invite code of the created conversation or '-1' if an error occurred.
  */
-export async function createConversation(username: string): Promise<string> {
-    // Check if username exists in PostgreSQL
-    const userResult = await pgClient.query('SELECT * FROM users WHERE name = $1', [username]);
-    if (userResult.rows.length === 0) {
-        console.error(`User ${username} not found.`);
-        return '-1';
+export async function createConversation(
+  pgClient: PgClient,
+  username: string
+): Promise<string> {
+  const userResult = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
+    [username]
+  );
+
+  if (userResult.rows.length === 0) {
+    throw new Error(`User ${username} not found.`);
+  }
+
+  const memberResult = await pgClient.query<{ household_id: string }>(
+    `SELECT household_id
+     FROM household_members
+     WHERE user_id = $1
+     LIMIT 1`,
+    [userResult.rows[0].id]
+  );
+
+  if (memberResult.rows.length > 0) {
+    const household = await pgClient.query<{ invite_code: string }>(
+      'SELECT invite_code FROM households WHERE id = $1 LIMIT 1',
+      [memberResult.rows[0].household_id]
+    );
+    if (household.rows.length > 0) {
+      return household.rows[0].invite_code;
     }
+  }
 
-    // Check if the user is already in a conversation
-    const userConversationsResult = await pgClient.query('SELECT * FROM conversations WHERE $1 = ANY(users)', [username]);
-    if (userConversationsResult.rows.length !== 0) {
-        const conversation = userConversationsResult.rows[0] as Conversation;
-        console.error(`User ${username} is already in a conversation with invite code ${conversation.inviteCode}.`);
-        return '-1';
-    }
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let inviteCode = '';
+  for (let i = 0; i < 6; i += 1) {
+    inviteCode += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
 
-    let inviteCode: string;
-    let existingResult: QueryResult;
+  const householdResult = await pgClient.query<{ id: string }>(
+    'INSERT INTO households (name, invite_code, created_by) VALUES ($1, $2, $3) RETURNING id',
+    ['House chat', inviteCode, userResult.rows[0].id]
+  );
 
-    // Generate a unique 6 digit invite code for the conversation
-    do {
-        inviteCode = Math.random().toString(36).substring(2, 8);
-        existingResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    } while (existingResult.rows.length !== 0);
+  await pgClient.query(
+    "INSERT INTO household_members (household_id, user_id, role) VALUES ($1, $2, 'owner')",
+    [householdResult.rows[0].id, userResult.rows[0].id]
+  );
 
-    const conversation: Conversation = {
-        inviteCode,
-        messages: [],
-        users: [username],
-    };
-
-    await pgClient.query('INSERT INTO conversations (inviteCode, messages, users) VALUES ($1, $2, $3)', [
-        conversation.inviteCode,
-        JSON.stringify(conversation.messages),
-        conversation.users,
-    ]);
-
-    return inviteCode;
+  return inviteCode;
 }
 
 /**
+ * POST /conversations/:inviteCode/members
  * Add user to the conversation in PostgreSQL associated with the given invite code.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param username The username of the user to add to the conversation.
+ * @param inviteCode The invite code of the conversation.
+ * @returns A boolean indicating whether the user was successfully added to the conversation.
  */
-export async function joinConversation(username: string, inviteCode: string): Promise<boolean> {
-    // Check if username exists in PostgreSQL
-    const userResult = await pgClient.query('SELECT * FROM users WHERE name = $1', [username]);
-    if (userResult.rows.length === 0) {
-        console.error(`User ${username} not found.`);
-        return false;
-    }
+export async function joinConversation(
+  pgClient: PgClient,
+  username: string,
+  inviteCode: string
+): Promise<boolean> {
+  const userResult = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
+    [username]
+  );
 
-    // Check if the user is already in a conversation
-    const userConversationsResult = await pgClient.query('SELECT * FROM conversations WHERE $1 = ANY(users)', [username]);
-    if (userConversationsResult.rows.length !== 0) {
-        const conversation = userConversationsResult.rows[0] as Conversation;
-        console.error(`User ${username} is already in a conversation with invite code ${conversation.inviteCode}.`);
-        return false;
-    }
+  if (userResult.rows.length === 0) {
+    return false;
+  }
 
-    // Check if the conversation with the given invite code exists
-    const conversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    if (conversationResult.rows.length === 0) {
-        console.error(`Conversation with invite code ${inviteCode} does not exist.`);
-        return false;
-    }
+  const household = await pgClient.query<{ id: string }>(
+    'SELECT id FROM households WHERE upper(invite_code) = upper($1) LIMIT 1',
+    [inviteCode]
+  );
 
-    // Add the user to the conversation's users array in PostgreSQL
-    await pgClient.query('UPDATE conversations SET users = array_append(users, $1) WHERE inviteCode = $2', [username, inviteCode]);
+  if (household.rows.length === 0) {
+    return false;
+  }
+
+  const current = await pgClient.query<{ household_id: string }>(
+    'SELECT household_id FROM household_members WHERE user_id = $1 LIMIT 1',
+    [userResult.rows[0].id]
+  );
+
+  if (current.rows.length > 0 && current.rows[0].household_id === household.rows[0].id) {
     return true;
+  }
+
+  if (current.rows.length > 0) {
+    return false;
+  }
+
+  await pgClient.query(
+    "INSERT INTO household_members (household_id, user_id, role) VALUES ($1, $2, 'member')",
+    [household.rows[0].id, userResult.rows[0].id]
+  );
+  return true;
 }
 
 /**
+ * Has no API command.
  * Refresh messages in conversation to the user's screen.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param inviteCode The invite code of the conversation.
+ * @returns A promise resolving to the conversation object or null if it does not exist.
  */
-export async function getConversation(inviteCode: string): Promise<boolean> {
-    const conversationRef = pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    const displayedMessages = new Set<string>();
-    const conversationResult = await conversationRef;
+export async function getConversation(
+  pgClient: PgClient,
+  inviteCode: string
+): Promise<Conversation | null> {
+  const household = await pgClient.query<{ id: string; name: string; invite_code: string }>(
+    'SELECT id, name, invite_code FROM households WHERE upper(invite_code) = upper($1) LIMIT 1',
+    [inviteCode]
+  );
 
-    // Check if conversation with the given invite code exists
-    if (conversationResult.rows.length === 0) {
-        console.error(`Conversation with invite code ${inviteCode} does not exist.`);
-        return false;
-    }
-    
-    // Display messages in the conversation that have not been displayed yet
-    if (conversationResult.rows.length !== 0) {
-        const conversation = conversationResult.rows[0] as Conversation;
-        conversation.messages.forEach((message: Message) => {
-            if (!displayedMessages.has(message.messageText)) {
-                console.log(message);
-                displayedMessages.add(message.messageText);
-            }
-        });
-    }
+  if (household.rows.length === 0) {
+    return null;
+  }
 
-    return true;
+  const messages = await getMessages(pgClient, household.rows[0].invite_code);
+  const members = await pgClient.query<{ display_name: string }>(
+    `SELECT u.display_name
+     FROM household_members hm
+     JOIN users u ON u.id = hm.user_id
+     WHERE hm.household_id = $1
+     ORDER BY u.display_name`,
+    [household.rows[0].id]
+  );
+
+  return {
+    inviteCode: household.rows[0].invite_code,
+    name: household.rows[0].name,
+    users: members.rows.map((row) => row.display_name),
+    messages: messages ?? [],
+  };
 }
 
 /**
+ * DELETE /conversations/:inviteCode/members
  * Remove a user from the conversation in PostgreSQL associated with the given invite code.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param username The username of the user to remove from the conversation.
+ * @param inviteCode The invite code of the conversation.
+ * @returns A boolean indicating whether the user was successfully removed from the conversation.
  */
-export async function leaveConversation(username: string, inviteCode: string): Promise<boolean> {
-    // Check if the conversation with the given invite code exists in PostgreSQL
-    const conversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    if (conversationResult.rows.length === 0) {
-        console.error(`Conversation with invite code ${inviteCode} does not exist.`);
-        return false;
-    }
+export async function leaveConversation(
+  pgClient: PgClient,
+  username: string,
+  inviteCode: string
+): Promise<boolean> {
+  const userResult = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
+    [username]
+  );
 
-    // Remove the user from the conversation's users array in PostgreSQL
-    const conversation = conversationResult.rows[0] as Conversation;
-    await pgClient.query('UPDATE conversations SET users = array_remove(users, $1) WHERE inviteCode = $2', [username, inviteCode]);
+  if (userResult.rows.length === 0) {
+    return false;
+  }
 
-    // If the conversation has no users left, delete it from PostgreSQL
-    if (conversation.users.length === 0) {
-        await deleteConversation(inviteCode);
-    }
+  const household = await pgClient.query<{ id: string }>(
+    'SELECT id FROM households WHERE upper(invite_code) = upper($1) LIMIT 1',
+    [inviteCode]
+  );
 
-    // Verify that the user has been removed from the conversation
-    const updatedConversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    if (updatedConversationResult.rows.length !== 0) {
-        const updatedConversation = updatedConversationResult.rows[0] as Conversation;
-        if (updatedConversation.users.includes(username)) {
-            return false;
-        }
-    }
+  if (household.rows.length === 0) {
+    return false;
+  }
 
-    return true;
+  const current = await pgClient.query<{ household_id: string }>(
+    'SELECT household_id FROM household_members WHERE user_id = $1 LIMIT 1',
+    [userResult.rows[0].id]
+  );
+
+  if (current.rows.length === 0 || current.rows[0].household_id !== household.rows[0].id) {
+    return false;
+  }
+
+  await pgClient.query('DELETE FROM household_members WHERE household_id = $1 AND user_id = $2', [household.rows[0].id, userResult.rows[0].id]);
+  return true;
 }
 
 /**
+ * DELETE /conversations/:inviteCode
  * Delete a conversation from PostgreSQL associated with the given invite code.
+ * @param pgClient The PostgreSQL client to use for the query.
+ * @param inviteCode The invite code of the conversation to delete.
+ * @returns A boolean indicating whether the deletion was successful.
  */
-export async function deleteConversation(inviteCode: string): Promise<boolean> {
-    // Check if the conversation with the given invite code exists in PostgreSQL
-    const conversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    if (conversationResult.rows.length === 0) {
-        console.error(`Conversation with invite code ${inviteCode} does not exist.`);
-        return false;
-    }
+export async function deleteConversation(
+  pgClient: PgClient,
+  inviteCode: string
+): Promise<boolean> {
+  const household = await pgClient.query<{ id: string }>(
+    'SELECT id FROM households WHERE upper(invite_code) = upper($1) LIMIT 1',
+    [inviteCode]
+  );
 
-    // Remove the conversation from PostgreSQL
-    await pgClient.query('DELETE FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    
-    // Check if the conversation has been successfully deleted
-    const updatedConversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    if (updatedConversationResult.rows.length !== 0) {
-        console.error('Failed to delete conversation with invite code:', inviteCode);
-        return false;
-    }
+  if (household.rows.length === 0) {
+    return false;
+  }
 
-    return true;
+  await pgClient.query('DELETE FROM households WHERE id = $1', [household.rows[0].id]);
+  return true;
 }
-
-/**
- * Add a message to the front of the queue in the specified conversation.
- */
-export async function sendMessage(username: string, inviteCode: string, messageText: string, attachments: unknown = []): Promise<boolean> {
-    // Check if the conversation with the given invite code exists in PostgreSQL
-    const conversationResult = await pgClient.query('SELECT * FROM conversations WHERE inviteCode = $1', [inviteCode]);
-    if (conversationResult.rows.length === 0) {
-        console.error('Conversation with invite code not found:', inviteCode);
-        return false;
-    }
-    
-    // Add the message to the front of the messages array in PostgreSQL
-    await pgClient.query('UPDATE conversations SET messages = array_prepend($1, messages) WHERE inviteCode = $2', [{
-        username,
-        messageText,
-        attachments,
-        timestamp: new Date(),
-    }, inviteCode]);
-
-    // Verify that the message has been successfully added to the conversation
-    const conversation = conversationResult.rows[0] as Conversation;
-    const messageExists = conversation.messages.some((message: Message) => {
-        return message.messageText === messageText && message.username === username;
-    });
-    if (!messageExists) {
-        console.error('Failed to send message to conversation with invite code:', inviteCode);
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * Upload a media file to the server.
- */
-export function uploadMedia(file: File): void{
-    const token = localStorage.getItem('chat_auth_token');
-    const activeUserId = localStorage.getItem('chat_user_id') || 'unknown';
-
-    const formdata = new FormData();
-    formdata.append('mediafile', file);
-
-    fetch('/api/chat/upload', {
-        method: 'POST',
-        headers: {'Authorization': `Bearer ${token}`},
-        body: formdata,
-    })
-    .then((response) => {
-        if (!response.ok) {
-            throw new Error(`Upload failed. Status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then((result) => {
-        console.log('Media uploaded successfully:', result.data);
-        
-        // do we use socket.io? if so, we need this:
-        // socket.emit('sendMessage', result.data);
-    })
-    .catch((error) => {
-        console.error('Error handling media upload:', error);
-    });
-}
-
-export function signInUser(username: string, password: string): void {
-    const userinfo_dict = {username, password};
-    let attemptedUserID: string = 'nan';
-    fetch('/api/auth/signin', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(userinfo_dict),
-    })
-        .then((response) => {
-            if (!response.ok){
-                throw new Error('Invalid login or server error');
-            }
-            return response.json();
-        })
-        .then((result) => {
-            attemptedUserID = result.user.id;
-            localStorage.setItem('chat_auth_token', result.token);
-            console.log(`User ${attemptedUserID} signed in`);
-        })
-        .catch((error) => {
-            console.error('Sign-in failed for user ', attemptedUserID);
-            // also need to display error message for user in UI
-        });
-}
-
-// TODO: Implement this later if there is time
-// export function signOutUser(): void {}

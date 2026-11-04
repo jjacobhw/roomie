@@ -4,6 +4,8 @@
   "main": "index.ts",
   "dependencies": {
     "expo": "^58.0.17",
+    "expo-document-picker": "~58.0.4",
+    "expo-image-picker": "~58.0.10",
     "expo-status-bar": "~58.0.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",

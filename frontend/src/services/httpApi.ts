@@ -6,16 +6,21 @@ import {
   AuthUser,
   ConversationSummary,
   Message,
+  MessageAttachment,
   MessagingError,
   MessagingErrorCode,
+  PickedFile,
   Session,
+  UploadedAttachment,
+  checkAttachment,
 } from '../types/messaging';
 
 const REQUEST_TIMEOUT_MS = 8000;
+const UPLOAD_TIMEOUT_MS = 60000; // the file itself can be several MB
 
 // Which request failed decides what a status code means (401 on sign in is a wrong password,
 // 401 anywhere else is an expired session).
-type Context = 'signup' | 'signin' | 'send' | 'other';
+type Context = 'signup' | 'signin' | 'send' | 'upload' | 'other';
 
 // Turn a failed HTTP response into the same errors the mock throws.
 export function errorFromResponse(
@@ -41,6 +46,14 @@ export function errorFromResponse(
     case 403:
       code = 'NOT_A_MEMBER';
       fallback = 'You’re not in this household';
+      break;
+    case 413:
+      code = 'FILE_TOO_LARGE';
+      fallback = 'That file is too large';
+      break;
+    case 415:
+      code = 'UNSUPPORTED_FILE';
+      fallback = 'That file type can’t be sent';
       break;
     case 404:
       code = 'CONVERSATION_NOT_FOUND';
@@ -70,6 +83,24 @@ export function errorFromResponse(
   return new MessagingError(code, text ?? fallback, retryAfterMs);
 }
 
+// Older servers send an empty list (or nothing); skip anything that isn't a complete attachment.
+function parseAttachments(raw: unknown): MessageAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const a = (item ?? {}) as Record<string, unknown>;
+    if (typeof a.id !== 'string' || typeof a.url !== 'string') return [];
+    return [
+      {
+        id: a.id,
+        url: a.url,
+        fileName: typeof a.fileName === 'string' ? a.fileName : 'file',
+        contentType: typeof a.contentType === 'string' ? a.contentType : 'application/octet-stream',
+        sizeBytes: typeof a.sizeBytes === 'number' ? a.sizeBytes : 0,
+      },
+    ];
+  });
+}
+
 // Accept what the server sends and return exactly the Message the UI expects.
 // The server sends no id, so build one from the content. It must come out the same whether
 // the message arrives in a send response or in a later poll, otherwise it shows up twice.
@@ -79,8 +110,13 @@ export function parseMessage(raw: unknown): Message {
   const messageText = String(m.messageText ?? '');
   const parsed = new Date(String(m.timestamp));
   const timestamp = isNaN(parsed.getTime()) ? new Date(0).toISOString() : parsed.toISOString();
-  const id = m.id !== undefined && m.id !== null ? String(m.id) : `${timestamp}|${username}|${messageText}`;
-  return { id, username, messageText, timestamp };
+  const attachments = parseAttachments(m.attachments);
+  const attachmentIds = attachments.map((a) => a.id).join(',');
+  const id =
+    m.id !== undefined && m.id !== null
+      ? String(m.id)
+      : `${timestamp}|${username}|${messageText}|${attachmentIds}`;
+  return { id, username, messageText, timestamp, attachments };
 }
 
 type RequestOptions = {
@@ -177,14 +213,69 @@ export async function getMessages(token: string, inviteCode: string): Promise<Me
   return list.map(parseMessage);
 }
 
-export async function sendMessage(token: string, inviteCode: string, messageText: string): Promise<Message> {
+// attachmentIds are files already uploaded with uploadAttachment; a message may be only files.
+export async function sendMessage(
+  token: string,
+  inviteCode: string,
+  messageText: string,
+  attachmentIds: string[] = [],
+): Promise<Message> {
   const text = messageText.trim();
-  if (!text) throw new MessagingError('EMPTY_MESSAGE', 'Message is empty');
+  if (!text && attachmentIds.length === 0) throw new MessagingError('EMPTY_MESSAGE', 'Message is empty');
 
   const data = await request('POST', `/messages/${enc(inviteCode)}`, {
     token,
-    body: { messageText: text },
+    body: attachmentIds.length > 0 ? { messageText: text, attachmentIds } : { messageText: text },
     context: 'send',
   });
   return parseMessage(data?.message);
+}
+
+// Three steps, like the backend: get a presigned URL, send the bytes straight to storage,
+// then tell the server the upload is done so it can mark the file complete.
+export async function uploadAttachment(
+  token: string,
+  inviteCode: string,
+  file: PickedFile,
+): Promise<UploadedAttachment> {
+  checkAttachment(file);
+
+  const slot = await request('POST', `/conversations/${enc(inviteCode)}/attachments`, {
+    token,
+    body: { fileName: file.name, contentType: file.mimeType, sizeBytes: file.sizeBytes },
+    context: 'upload',
+  });
+  if (typeof slot?.attachmentId !== 'string' || typeof slot?.uploadUrl !== 'string') {
+    throw new MessagingError('SERVER_ERROR', 'The server sent an unexpected upload response');
+  }
+
+  // The storage service checks the signature, so send exactly the headers the server told us to.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  try {
+    const bytes = await (await fetch(file.uri)).blob();
+    const put = await fetch(slot.uploadUrl, {
+      method: slot.uploadMethod ?? 'PUT',
+      // No Authorization header here: the URL itself carries the permission.
+      headers: slot.uploadHeaders ?? { 'Content-Type': file.mimeType },
+      body: bytes,
+      signal: controller.signal,
+    });
+    if (!put.ok) throw new MessagingError('SERVER_ERROR', 'The file could not be uploaded');
+  } catch (e) {
+    if (e instanceof MessagingError) throw e;
+    throw new MessagingError('NETWORK_ERROR', 'Can’t reach the server. Check your connection.');
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const done = await request('POST', `/attachments/${enc(slot.attachmentId)}/complete`, {
+    token,
+    context: 'upload',
+  });
+  const a = done?.attachment;
+  if (!a || a.status !== 'complete') {
+    throw new MessagingError('SERVER_ERROR', 'The server did not confirm the upload');
+  }
+  return { id: a.id, fileName: a.fileName, contentType: a.contentType, sizeBytes: a.sizeBytes };
 }
