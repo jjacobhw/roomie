@@ -1,16 +1,17 @@
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { colors } from './src/constants/colors';
 import { AuthScreen } from './src/screens/AuthScreen';
-import { ChatScreen } from './src/screens/ChatScreen';
 import { JoinScreen } from './src/screens/JoinScreen';
+import { MainTabs } from './src/screens/MainTabs';
 import { getMyConversation, signOut } from './src/services/messagingApi';
 import { Session } from './src/types/messaging';
 
 // Which screen shows depends on two things (so no navigation library is needed yet):
 //   session      null -> sign in / sign up
 //   inviteCode   null -> create or join a household, otherwise -> the household's chat
-export default function App() {
+function AppContent() {
   const [session, setSession] = useState<Session | null>(null);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   // True while we ask the server whether the user already belongs to a household.
@@ -73,12 +74,20 @@ export default function App() {
   }
 
   return (
-    <ChatScreen
+    <MainTabs
       username={session.user.username}
       token={session.token}
       inviteCode={inviteCode}
       onLogout={handleLogout}
       onSessionExpired={reset}
     />
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
   );
 }

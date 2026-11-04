@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   type ScrollViewInstance,
   StyleSheet,
@@ -37,7 +36,7 @@ export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExp
   const scrollRef = useRef<ScrollViewInstance>(null);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -96,7 +95,7 @@ export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExp
           )}
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
