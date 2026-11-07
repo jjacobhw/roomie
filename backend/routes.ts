@@ -695,6 +695,42 @@ export function registerRoutes(app: Express, pool: Pool): void {
   });
   app.delete('/conversations/:inviteCode', deleteConversation);
 
+  // Rename a household. Only its current owner may do this (ownership moves when an owner leaves).
+  app.patch('/conversations/:inviteCode', authenticated(pool, async (request, response) => {
+    const body: unknown = request.body;
+    if (!isRecord(body) || typeof body.name !== 'string') {
+      response.status(400).json({ error: 'name must be a string.' });
+      return;
+    }
+    const name = body.name.trim();
+    if (name.length < 1 || name.length > 80) {
+      response.status(400).json({ error: 'name must be between 1 and 80 characters.' });
+      return;
+    }
+
+    const inviteCode = routeParam(request, 'inviteCode');
+    const result = await pool.query<{ inviteCode: string; name: string }>(
+      `UPDATE households h
+       SET name = $3
+       FROM household_members hm
+       WHERE h.invite_code = $1
+         AND hm.household_id = h.id
+         AND hm.user_id = $2
+         AND hm.role = 'owner'
+       RETURNING h.invite_code AS "inviteCode", h.name`,
+      [inviteCode, request.authUser.id, name]
+    );
+    if (result.rows.length > 0) {
+      response.json({ conversation: result.rows[0] });
+      return;
+    }
+
+    const access = await getConversationAccess(pool, inviteCode, request.authUser.id);
+    response.status(access === 'not_found' ? 404 : 403).json({
+      error: access === 'not_found' ? 'Conversation not found.' : 'Only the owner can rename this household.',
+    });
+  }));
+
   const removeConversationMember: RequestHandler = authenticated(pool, async (request, response) => {
     const routeUsername = routeParam(request, 'username');
     const targetUsername = routeUsername || request.authUser.username;
