@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { colors } from './src/constants/colors';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { JoinScreen } from './src/screens/JoinScreen';
 import { getMyConversation, signOut } from './src/services/messagingApi';
+import { disablePushNotifications, enablePushNotifications } from './src/services/pushNotifications';
 import { Session } from './src/types/messaging';
 
 // Which screen shows depends on two things (so no navigation library is needed yet):
@@ -42,9 +43,21 @@ export default function App() {
     setChecking(false);
   }, []);
 
-  // Log out: tell the server to forget the token (best effort), then go back to sign in.
+  // Once signed in, ask to send phone notifications (chores, expenses). Does nothing on web.
+  const sessionToken = session?.token;
+  useEffect(() => {
+    if (sessionToken) void enablePushNotifications(sessionToken);
+  }, [sessionToken]);
+
+  // Log out: stop this phone's notifications and tell the server to forget the token
+  // (both best effort), then go back to sign in.
   const handleLogout = useCallback(() => {
-    if (session) signOut(session.token).catch(() => {});
+    if (session) {
+      const { token } = session;
+      disablePushNotifications(token)
+        .then(() => signOut(token))
+        .catch(() => {});
+    }
     reset();
   }, [session, reset]);
 

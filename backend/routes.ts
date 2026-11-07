@@ -15,6 +15,7 @@ import type { Pool } from 'pg';
 import { getConversations, getMessages } from './texting';
 import { publicAttachment, type StoredAttachment } from './storage';
 import { registerUploadRoutes } from './uploads';
+import { notifyHousehold, notifyUsers, registerNotificationRoutes } from './notifications';
 
 const SESSION_LIFETIME_DAYS = 30;
 const MESSAGE_COOLDOWN_MS = 3000;
@@ -311,6 +312,7 @@ export function registerRoutes(app: Express, pool: Pool): void {
   });
 
   registerUploadRoutes(app, pool);
+  registerNotificationRoutes(app, pool);
 
   app.post('/users', asyncRoute(async (request, response) => {
     const body: unknown = request.body;
@@ -823,6 +825,31 @@ function forbidden(response: Response): void {
   response.status(403).json({ error: 'User is not a member of this conversation.' });
 }
 
+// A new chore goes to the list's roommate, or to the whole house when the list is shared.
+async function notifyChoreAdded(pool: Pool, listId: string, text: string, author: AuthUser): Promise<void> {
+  try {
+    const list = await pool.query<{ title: string; householdId: string; assignedTo: string | null }>(
+      `SELECT title, household_id AS "householdId", assigned_to AS "assignedTo"
+       FROM chore_lists WHERE id = $1`,
+      [listId]
+    );
+    if (list.rows.length === 0) return;
+    const { title, householdId, assignedTo } = list.rows[0];
+    const message = {
+      title: `New chore in ${title}`,
+      body: `${author.username}: ${text}`,
+      data: { type: 'chore', listId },
+    };
+    if (assignedTo === null) {
+      await notifyHousehold(pool, householdId, author.id, message);
+    } else if (assignedTo !== author.id) {
+      await notifyUsers(pool, [assignedTo], message);
+    }
+  } catch (error) {
+    console.error('Chore notification failed:', error);
+  }
+}
+
 function registerChoreRoutes(app: Express, pool: Pool): void {
   app.get('/conversations/:inviteCode/chores', authenticated(pool, async (request, response) => {
     const inviteCode = routeParam(request, 'inviteCode');
@@ -921,6 +948,13 @@ function registerChoreRoutes(app: Express, pool: Pool): void {
        RETURNING id, created_at AS "createdAt"`,
       [inviteCode, title, assigneeId, request.authUser.id]
     );
+    if (assigneeId && assigneeId !== request.authUser.id) {
+      void notifyUsers(pool, [assigneeId], {
+        title: 'New chore list',
+        body: `${request.authUser.username} assigned you "${title}"`,
+        data: { type: 'chore', listId: result.rows[0].id },
+      });
+    }
     const choreList: ChoreList = {
       id: result.rows[0].id,
       title,
@@ -963,6 +997,7 @@ function registerChoreRoutes(app: Express, pool: Pool): void {
       [listId, text, request.authUser.id]
     );
     response.status(201).json({ item: toItem(result.rows[0]) });
+    void notifyChoreAdded(pool, listId, text, request.authUser);
   }));
 
   app.patch('/chores/items/:itemId', authenticated(pool, async (request, response) => {
