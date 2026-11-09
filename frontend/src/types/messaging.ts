@@ -40,6 +40,15 @@ export type ConversationSummary = {
   users: string[];
 };
 
+// One person in a household, as GET /conversations/:inviteCode/users describes them.
+export type HouseholdMember = {
+  username: string;
+  role: 'owner' | 'member';
+};
+
+// Longest household name the backend accepts.
+export const HOUSEHOLD_NAME_MAX_LENGTH = 80;
+
 // Why a request failed, so the UI can show a useful message.
 export type MessagingErrorCode =
   | 'INVALID_INPUT' // 400: the server rejected a field (too short, too long...)

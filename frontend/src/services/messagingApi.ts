@@ -17,3 +17,6 @@ export const joinConversation = api.joinConversation;
 export const getMessages = api.getMessages;
 export const sendMessage = api.sendMessage;
 export const uploadAttachment = api.uploadAttachment;
+export const getMembers = api.getMembers;
+export const renameConversation = api.renameConversation;
+export const leaveConversation = api.leaveConversation;
