@@ -2,11 +2,10 @@
 // so the screens don't know which one they're using.
 // Everything except sign up and sign in needs the token from signUp/signIn.
 import { API_URL } from '../config';
+import { CHORE_ITEM_MAX_LENGTH, ChoreItem, ChoreList, NewChoreList } from '../types/chores';
 import { sortMembers } from '../utils/members';
 import {
   AuthUser,
-  ChoreItem,
-  ChoreList,
   ConversationSummary,
   HouseholdMember,
   Message,
@@ -313,31 +312,27 @@ export async function uploadAttachment(
   return { id: a.id, fileName: a.fileName, contentType: a.contentType, sizeBytes: a.sizeBytes };
 }
 
-// ---- Chores -------------------------------------------------------------------------------
+// ---- Chores -----------------------------------------------------------------------------------
 
-function parseChoreItem(raw: unknown): ChoreItem {
+// Accept what the server sends and return exactly the ChoreItem the UI expects.
+export function parseChoreItem(raw: unknown): ChoreItem {
   const i = (raw ?? {}) as Record<string, unknown>;
-  if (i.id === undefined || i.id === null || typeof i.text !== 'string') {
-    throw new MessagingError('SERVER_ERROR', 'The server sent an unexpected chore');
-  }
+  const isDone = Boolean(i.isDone);
   return {
-    id: String(i.id),
-    text: i.text,
-    isDone: i.isDone === true,
-    doneBy: typeof i.doneBy === 'string' ? i.doneBy : null,
-    doneAt: typeof i.doneAt === 'string' ? i.doneAt : null,
+    id: String(i.id ?? ''),
+    text: String(i.text ?? ''),
+    isDone,
+    doneBy: isDone && typeof i.doneBy === 'string' ? i.doneBy : null,
+    doneAt: isDone && typeof i.doneAt === 'string' ? i.doneAt : null,
     createdAt: typeof i.createdAt === 'string' ? i.createdAt : new Date(0).toISOString(),
   };
 }
 
-function parseChoreList(raw: unknown): ChoreList {
+export function parseChoreList(raw: unknown): ChoreList {
   const l = (raw ?? {}) as Record<string, unknown>;
-  if (typeof l.id !== 'string' || typeof l.title !== 'string') {
-    throw new MessagingError('SERVER_ERROR', 'The server sent an unexpected chore list');
-  }
   return {
-    id: l.id,
-    title: l.title,
+    id: String(l.id ?? ''),
+    title: String(l.title ?? ''),
     assignee: typeof l.assignee === 'string' ? l.assignee : null,
     createdBy: typeof l.createdBy === 'string' ? l.createdBy : null,
     createdAt: typeof l.createdAt === 'string' ? l.createdAt : new Date(0).toISOString(),
@@ -345,18 +340,17 @@ function parseChoreList(raw: unknown): ChoreList {
   };
 }
 
-export async function getChores(token: string, inviteCode: string): Promise<ChoreList[]> {
+export async function getChoreLists(token: string, inviteCode: string): Promise<ChoreList[]> {
   const data = await request('GET', `/conversations/${enc(inviteCode)}/chores`, { token });
   return Array.isArray(data?.choreLists) ? data.choreLists.map(parseChoreList) : [];
 }
 
-// assignee: a username, null for the whole house, or undefined for the signed-in user.
-export async function createChoreList(
-  token: string,
-  inviteCode: string,
-  options: { title?: string; assignee?: string | null } = {},
-): Promise<ChoreList> {
-  const data = await request('POST', `/conversations/${enc(inviteCode)}/chores`, { token, body: options });
+export async function createChoreList(token: string, inviteCode: string, input: NewChoreList = {}): Promise<ChoreList> {
+  // Only send what was chosen, so the server fills in its own defaults for the rest.
+  const body: Record<string, unknown> = {};
+  if (input.title !== undefined && input.title.trim() !== '') body.title = input.title.trim();
+  if (input.assignee !== undefined) body.assignee = input.assignee;
+  const data = await request('POST', `/conversations/${enc(inviteCode)}/chores`, { token, body });
   return parseChoreList(data?.choreList);
 }
 
@@ -364,8 +358,12 @@ export async function deleteChoreList(token: string, listId: string): Promise<vo
   await request('DELETE', `/chores/${enc(listId)}`, { token });
 }
 
-export async function addChoreItem(token: string, listId: string, text: string): Promise<ChoreItem> {
-  const data = await request('POST', `/chores/${enc(listId)}/items`, { token, body: { text } });
+export async function createChoreItem(token: string, listId: string, text: string): Promise<ChoreItem> {
+  const body = text.trim();
+  if (body.length < 1 || body.length > CHORE_ITEM_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `text must be between 1 and ${CHORE_ITEM_MAX_LENGTH} characters.`);
+  }
+  const data = await request('POST', `/chores/${enc(listId)}/items`, { token, body: { text: body } });
   return parseChoreItem(data?.item);
 }
 

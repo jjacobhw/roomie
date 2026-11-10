@@ -46,31 +46,6 @@ export type HouseholdMember = {
   role: 'owner' | 'member';
 };
 
-// One chore on a list, as GET /conversations/:inviteCode/chores describes it.
-export type ChoreItem = {
-  id: string;
-  text: string;
-  isDone: boolean;
-  // Who checked it off and when; null while the chore is open.
-  doneBy: string | null;
-  doneAt: string | null;
-  createdAt: string;
-};
-
-// A list of chores. `assignee` is a username, or null for a whole-house list.
-export type ChoreList = {
-  id: string;
-  title: string;
-  assignee: string | null;
-  createdBy: string | null;
-  createdAt: string;
-  items: ChoreItem[];
-};
-
-// Limits the backend enforces on chores.
-export const CHORE_TITLE_MAX_LENGTH = 80;
-export const CHORE_TEXT_MAX_LENGTH = 200;
-
 // Longest household name the backend accepts.
 export const HOUSEHOLD_NAME_MAX_LENGTH = 80;
 

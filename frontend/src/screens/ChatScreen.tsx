@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   type ScrollViewInstance,
   StyleSheet,
@@ -26,13 +25,11 @@ type Props = {
   householdName: string | null;
   // Opens the household screen (members, rename, leave, log out).
   onOpenInfo: () => void;
-  // Opens the chores board.
-  onOpenChores: () => void;
   // The server says the session is no longer valid.
   onSessionExpired: () => void;
 };
 
-export function ChatScreen({ username, token, inviteCode, householdName, onOpenInfo, onOpenChores, onSessionExpired }: Props) {
+export function ChatScreen({ username, token, inviteCode, householdName, onOpenInfo, onSessionExpired }: Props) {
   const { messages, loading, loadError, sending, send, uploading, upload } = useConversation(
     token,
     inviteCode,
@@ -41,7 +38,7 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
   const scrollRef = useRef<ScrollViewInstance>(null);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -60,14 +57,6 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
               Invite code: <Text style={styles.headerCodeValue}>{inviteCode}</Text>
             </Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Chores board"
-            onPress={onOpenChores}
-            style={[styles.infoButton, styles.choresButton]}
-          >
-            <Text style={styles.infoButtonText}>Chores</Text>
-          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Household info and members"
@@ -114,7 +103,7 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
           )}
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -173,9 +162,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 14,
     backgroundColor: colors.primarySoft,
-  },
-  choresButton: {
-    marginRight: 8,
   },
   infoButtonText: {
     color: colors.primary,

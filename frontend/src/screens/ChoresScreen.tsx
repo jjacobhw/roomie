@@ -1,118 +1,285 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { ChoreListCard } from '../components/ChoreListCard';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { colors } from '../constants/colors';
+import { USING_MOCK } from '../config';
 import { useChores } from '../hooks/useChores';
-import { getMembers } from '../services/messagingApi';
-import { HouseholdMember } from '../types/messaging';
+import { CHORE_ITEM_MAX_LENGTH, CHORE_TITLE_MAX_LENGTH, ChoreList } from '../types/chores';
+import { choreProgress } from '../utils/chores';
+import { confirmAction } from '../utils/confirm';
 
 type Props = {
   username: string;
   token: string;
   inviteCode: string;
-  householdName: string | null;
-  onBack: () => void;
+  // The server says the session is no longer valid.
   onSessionExpired: () => void;
 };
 
-export function ChoresScreen({ username, token, inviteCode, householdName, onBack, onSessionExpired }: Props) {
-  const { lists, loading, loadError, refresh, toggleItem, removeItem, removeList, addItem, addList } = useChores(
+// Who a list belongs to, as shown on its badge.
+function assigneeLabel(list: ChoreList, username: string): string {
+  if (list.assignee === null) return 'Whole house';
+  return list.assignee === username ? 'You' : list.assignee;
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+// The household's chore lists, loaded from the server and refreshed every few seconds so a
+// roommate's checkmark shows up here too.
+export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: Props) {
+  const { lists, loading, loadError, toggle, addItem, createList, removeItem, removeList } = useChores(
     token,
     inviteCode,
+    username,
     onSessionExpired,
   );
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [picking, setPicking] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  // What's typed in each list's "add a chore" box, by list id.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // The "new list" form.
+  const [newTitle, setNewTitle] = useState('');
+  const [wholeHouse, setWholeHouse] = useState(false);
+  const [creating, setCreating] = useState(false);
+  // The reason the last change failed (e.g. the server was unreachable), until the next one.
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    getMembers(token, inviteCode)
-      .then((m) => !cancelled && setMembers(m))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [token, inviteCode]);
-
-  async function report(result: Promise<{ ok: boolean; error?: string }>) {
-    const r = await result;
-    setMessage(r.ok ? null : r.error ?? 'Something went wrong');
+  async function handleToggle(itemId: string, isDone: boolean) {
+    setActionError(null);
+    const result = await toggle(itemId, isDone);
+    if (!result.ok) setActionError(result.error);
   }
 
-  async function create(assignee: string | null) {
-    setPicking(false);
-    await report(addList({ assignee }));
+  async function handleDeleteItem(itemId: string) {
+    setActionError(null);
+    const result = await removeItem(itemId);
+    if (!result.ok) setActionError(result.error);
+  }
+
+  async function handleDeleteList(list: ChoreList) {
+    const count = list.items.length;
+    const detail = count === 0 ? 'It has no chores.' : `Its ${count === 1 ? '1 chore' : `${count} chores`} will be deleted too.`;
+    if (!(await confirmAction(`Delete “${list.title}”?`, detail, 'Delete'))) return;
+    setActionError(null);
+    const result = await removeList(list.id);
+    if (!result.ok) setActionError(result.error);
+  }
+
+  async function handleAddItem(listId: string) {
+    const text = (drafts[listId] ?? '').trim();
+    if (text === '') return;
+    setActionError(null);
+    const result = await addItem(listId, text);
+    if (result.ok) {
+      setDrafts((current) => ({ ...current, [listId]: '' }));
+    } else {
+      setActionError(result.error); // the text stays in the box so it can be sent again
+    }
+  }
+
+  async function handleCreateList() {
+    if (creating) return;
+    setCreating(true);
+    setActionError(null);
+    // Leaving assignee out lets the server assign the list to you; null means the whole house.
+    const result = await createList({ title: newTitle, ...(wholeHouse ? { assignee: null } : {}) });
+    if (result.ok) {
+      setNewTitle('');
+      setWholeHouse(false);
+    } else {
+      setActionError(result.error);
+    }
+    setCreating(false);
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
+    <View style={styles.root}>
       <View style={styles.header}>
-        <Pressable accessibilityRole="button" onPress={onBack} style={styles.headerButton}>
-          <Text style={styles.headerButtonText}>Chat</Text>
-        </Pressable>
-        <View style={styles.headerTitleGroup}>
-          <Text style={styles.headerTitle} numberOfLines={1}>Chores</Text>
-          <Text style={styles.headerSub} numberOfLines={1}>{householdName || 'Your household'}</Text>
+        <View style={styles.headerIcon}>
+          <Text style={styles.headerIconText}>R</Text>
         </View>
-        <Pressable accessibilityRole="button" onPress={() => setPicking((p) => !p)} style={styles.headerButton}>
-          <Text style={styles.headerButtonText}>New list</Text>
-        </Pressable>
+        <Text style={styles.headerTitle}>Chores</Text>
       </View>
 
-      {picking && (
-        <View style={styles.picker}>
-          <Text style={styles.pickerLabel}>WHO IS THIS LIST FOR?</Text>
-          <View style={styles.pills}>
-            {[username, ...members.map((m) => m.username).filter((n) => n !== username)].map((name) => (
-              <Pressable key={name} onPress={() => create(name)} style={styles.pill}>
-                <Text style={styles.pillText}>{name === username ? 'Me' : name}</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+      >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {(actionError ?? loadError) && <Text style={styles.banner}>{actionError ?? loadError}</Text>}
+
+          {loading && (
+            <View style={styles.centered}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          )}
+
+          {!loading && lists.length === 0 && !loadError && (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No chore lists yet</Text>
+              <Text style={styles.emptyNote}>Create one below, for yourself or for the whole house.</Text>
+            </View>
+          )}
+
+          {lists.map((list) => {
+            const { done, total } = choreProgress(list);
+            const draft = drafts[list.id] ?? '';
+            return (
+              <View key={list.id} style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>{list.title}</Text>
+                  <View style={[styles.badge, list.assignee === null && styles.badgeHouse]}>
+                    <Text style={[styles.badgeText, list.assignee === null && styles.badgeTextHouse]}>
+                      {assigneeLabel(list, username)}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.progressText}>
+                  {total === 0 ? 'No chores yet' : `${done} of ${total} done`}
+                </Text>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[styles.progressFill, { width: total === 0 ? '0%' : `${(done / total) * 100}%` }]}
+                  />
+                </View>
+
+                {list.items.map((item) => (
+                  <View key={item.id} style={styles.itemRow}>
+                    <Pressable
+                      accessibilityLabel={`${item.text}, ${item.isDone ? 'done' : 'not done'}`}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: item.isDone }}
+                      onPress={() => handleToggle(item.id, !item.isDone)}
+                      style={styles.itemMain}
+                    >
+                      <View style={[styles.checkbox, item.isDone && styles.checkboxChecked]}>
+                        {item.isDone && <Text style={styles.checkmark}>✓</Text>}
+                      </View>
+                      <View style={styles.itemCopy}>
+                        <Text style={[styles.itemText, item.isDone && styles.itemTextDone]}>{item.text}</Text>
+                        {item.isDone && item.doneBy && item.doneAt && (
+                          <Text style={styles.itemMeta}>
+                            Done by {item.doneBy === username ? 'you' : item.doneBy} at {formatTime(item.doneAt)}
+                          </Text>
+                        )}
+                      </View>
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel={`Delete ${item.text}`}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                      onPress={() => handleDeleteItem(item.id)}
+                      style={styles.removeButton}
+                    >
+                      <Text style={styles.removeButtonText}>✕</Text>
+                    </Pressable>
+                  </View>
+                ))}
+
+                <View style={styles.addRow}>
+                  <TextInput
+                    accessibilityLabel={`Add a chore to ${list.title}`}
+                    maxLength={CHORE_ITEM_MAX_LENGTH}
+                    onChangeText={(text) => setDrafts((current) => ({ ...current, [list.id]: text }))}
+                    onSubmitEditing={() => handleAddItem(list.id)}
+                    placeholder="Add a chore..."
+                    placeholderTextColor={colors.textFaint}
+                    returnKeyType="done"
+                    style={styles.addInput}
+                    value={draft}
+                  />
+                  <Pressable
+                    accessibilityLabel="Add chore"
+                    accessibilityRole="button"
+                    disabled={draft.trim() === ''}
+                    onPress={() => handleAddItem(list.id)}
+                    style={[styles.addButton, draft.trim() === '' && styles.addButtonDisabled]}
+                  >
+                    <Text style={styles.addButtonText}>+</Text>
+                  </Pressable>
+                </View>
+
+                <Pressable
+                  accessibilityLabel={`Delete list ${list.title}`}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => handleDeleteList(list)}
+                  style={styles.deleteListButton}
+                >
+                  <Text style={styles.deleteListText}>Delete list</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+
+          <View style={styles.createCard}>
+            <Text style={styles.createLabel}>NEW LIST</Text>
+            <TextInput
+              accessibilityLabel="New list name"
+              maxLength={CHORE_TITLE_MAX_LENGTH}
+              onChangeText={setNewTitle}
+              onSubmitEditing={handleCreateList}
+              placeholder="List name (optional)"
+              placeholderTextColor={colors.textFaint}
+              returnKeyType="done"
+              style={styles.addInput}
+              value={newTitle}
+            />
+            <View style={styles.chipRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: !wholeHouse }}
+                onPress={() => setWholeHouse(false)}
+                style={[styles.chip, !wholeHouse && styles.chipSelected]}
+              >
+                <Text style={[styles.chipText, !wholeHouse && styles.chipTextSelected]}>Mine</Text>
               </Pressable>
-            ))}
-            <Pressable onPress={() => create(null)} style={styles.pill}>
-              <Text style={styles.pillText}>Whole house</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: wholeHouse }}
+                onPress={() => setWholeHouse(true)}
+                style={[styles.chip, wholeHouse && styles.chipSelected]}
+              >
+                <Text style={[styles.chipText, wholeHouse && styles.chipTextSelected]}>Whole house</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={creating}
+              onPress={handleCreateList}
+              style={[styles.createButton, creating && styles.addButtonDisabled]}
+            >
+              <Text style={styles.createButtonText}>Create list</Text>
             </Pressable>
           </View>
-        </View>
-      )}
 
-      {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {(loadError || message) && (
-            <Pressable onPress={() => { setMessage(null); refresh(); }}>
-              <Text style={styles.error}>{message ?? loadError} (tap to retry)</Text>
-            </Pressable>
+          {USING_MOCK && (
+            <Text style={styles.footnote}>Fake-data mode: chores are kept on this device only.</Text>
           )}
-          {!loadError && lists.length === 0 && (
-            <Text style={styles.empty}>No chore lists yet. Tap “New list” to make one.</Text>
-          )}
-          {lists.map((list) => (
-            <ChoreListCard
-              key={list.id}
-              list={list}
-              onToggle={(itemId, isDone) => report(toggleItem(list.id, itemId, isDone, username))}
-              onDeleteItem={(itemId) => report(removeItem(list.id, itemId))}
-              onDeleteList={() => report(removeList(list.id))}
-              onAddItem={async (text) => {
-                const r = await addItem(list.id, text);
-                return r.ok ? null : r.error;
-              }}
-            />
-          ))}
         </ScrollView>
-      )}
-    </SafeAreaView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.background },
+  flex: {
+    flex: 1,
+  },
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   header: {
     height: 72,
     paddingHorizontal: 22,
@@ -121,32 +288,268 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headerTitleGroup: { flex: 1, marginHorizontal: 12 },
-  headerTitle: { color: colors.text, fontSize: 19, fontWeight: '700' },
-  headerSub: { color: colors.textFaint, fontSize: 12, marginTop: 2 },
-  headerButton: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+  headerIcon: {
+    width: 40,
+    height: 40,
     borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  headerIconText: {
+    color: colors.onPrimary,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  headerTitle: {
+    flex: 1,
+    marginLeft: 12,
+    color: colors.text,
+    fontSize: 19,
+    fontWeight: '700',
+  },
+  content: {
+    padding: 18,
+    paddingBottom: 28,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 16,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cardTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '700',
+    marginRight: 10,
+  },
+  badge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
     backgroundColor: colors.primarySoft,
   },
-  headerButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
-  picker: { padding: 18, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
-  pickerLabel: { color: colors.textFaint, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 8 },
-  pills: { flexDirection: 'row', flexWrap: 'wrap' },
-  pill: {
-    paddingVertical: 8,
+  badgeHouse: {
+    backgroundColor: colors.avatarBackground,
+  },
+  badgeText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  badgeTextHouse: {
+    color: colors.avatarText,
+  },
+  progressText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 8,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.surfaceMuted,
+    marginTop: 6,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.online,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  itemMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  removeButton: {
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 4,
+  },
+  removeButtonText: {
+    color: colors.textFaint,
+    fontSize: 15,
+  },
+  deleteListButton: {
+    alignSelf: 'flex-end',
+    marginTop: 14,
+  },
+  deleteListText: {
+    color: colors.error,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.textFaint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  checkboxChecked: {
+    borderColor: colors.online,
+    backgroundColor: colors.online,
+  },
+  checkmark: {
+    color: colors.onPrimary,
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 16,
+  },
+  itemCopy: {
+    flex: 1,
+  },
+  itemText: {
+    color: colors.text,
+    fontSize: 15,
+  },
+  itemTextDone: {
+    color: colors.textFaint,
+    textDecorationLine: 'line-through',
+  },
+  itemMeta: {
+    color: colors.textFaint,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  addInput: {
+    flex: 1,
+    height: 42,
     paddingHorizontal: 14,
-    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 21,
+    backgroundColor: colors.surfaceMuted,
+    color: colors.text,
+    fontSize: 14,
+  },
+  addButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+    backgroundColor: colors.primary,
+  },
+  addButtonDisabled: {
+    backgroundColor: colors.primaryDisabled,
+  },
+  addButtonText: {
+    color: colors.onPrimary,
+    fontSize: 24,
+    fontWeight: '600',
+    lineHeight: 26,
+  },
+  footnote: {
+    color: colors.textFaint,
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  centered: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  banner: {
+    color: colors.error,
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    padding: 24,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  emptyNote: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  createCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 16,
+  },
+  createLabel: {
+    color: colors.textFaint,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    marginBottom: 12,
+  },
+  chip: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     backgroundColor: colors.surfaceMuted,
     marginRight: 8,
-    marginBottom: 8,
   },
-  pillText: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 18, paddingBottom: 32 },
-  error: { color: colors.error, fontSize: 13, textAlign: 'center', marginBottom: 12 },
-  empty: { color: colors.textFaint, fontSize: 13, textAlign: 'center', marginTop: 24 },
+  chipSelected: {
+    backgroundColor: colors.primarySoft,
+  },
+  chipText: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  chipTextSelected: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  createButton: {
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  createButtonText: {
+    color: colors.onPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
 });
+
