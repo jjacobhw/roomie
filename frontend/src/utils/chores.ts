@@ -1,4 +1,4 @@
-import { CHORE_ITEM_MAX_LENGTH, ChoreList } from '../types/chores';
+import { ChoreItem, ChoreList } from '../types/chores';
 
 // Check or uncheck one chore. Checking records who did it and when; unchecking clears both,
 // like the backend does. Returns new lists and never changes the ones passed in.
@@ -24,26 +24,17 @@ export function toggleChoreItem(
   );
 }
 
-// Add a chore to a list. Blank text, text over the length limit, or an unknown list
-// change nothing (the same lists come back).
-export function addChoreItem(
-  lists: ChoreList[],
-  listId: string,
-  text: string,
-  id: string,
-  nowIso: string,
-): ChoreList[] {
-  const body = text.trim();
-  if (body.length < 1 || body.length > CHORE_ITEM_MAX_LENGTH) return lists;
-  if (!lists.some((list) => list.id === listId)) return lists;
-  return lists.map((list) =>
-    list.id === listId
-      ? {
-          ...list,
-          items: [...list.items, { id, text: body, isDone: false, doneBy: null, doneAt: null, createdAt: nowIso }],
-        }
-      : list,
-  );
+// Put a chore the server just saved at the end of its list. If the list isn't there or already
+// has that chore (a refresh got there first), the same lists come back.
+export function appendChoreItem(lists: ChoreList[], listId: string, item: ChoreItem): ChoreList[] {
+  const target = lists.find((list) => list.id === listId);
+  if (!target || target.items.some((existing) => existing.id === item.id)) return lists;
+  return lists.map((list) => (list === target ? { ...list, items: [...list.items, item] } : list));
+}
+
+// Put a list the server just saved at the end. Does nothing if it's already there.
+export function appendChoreList(lists: ChoreList[], list: ChoreList): ChoreList[] {
+  return lists.some((existing) => existing.id === list.id) ? lists : [...lists, list];
 }
 
 export function choreProgress(list: ChoreList): { done: number; total: number } {

@@ -2,6 +2,7 @@
 // so the screens don't know which one they're using.
 // Everything except sign up and sign in needs the token from signUp/signIn.
 import { API_URL } from '../config';
+import { CHORE_ITEM_MAX_LENGTH, ChoreItem, ChoreList, NewChoreList } from '../types/chores';
 import {
   AuthUser,
   ConversationSummary,
@@ -125,7 +126,7 @@ type RequestOptions = {
   context?: Context;
 };
 
-async function request(method: 'GET' | 'POST' | 'DELETE', path: string, options: RequestOptions = {}): Promise<any> {
+async function request(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, options: RequestOptions = {}): Promise<any> {
   const { token, body, context = 'other' } = options;
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -278,4 +279,68 @@ export async function uploadAttachment(
     throw new MessagingError('SERVER_ERROR', 'The server did not confirm the upload');
   }
   return { id: a.id, fileName: a.fileName, contentType: a.contentType, sizeBytes: a.sizeBytes };
+}
+
+// ---- Chores -----------------------------------------------------------------------------------
+
+// Accept what the server sends and return exactly the ChoreItem the UI expects.
+export function parseChoreItem(raw: unknown): ChoreItem {
+  const i = (raw ?? {}) as Record<string, unknown>;
+  const isDone = Boolean(i.isDone);
+  return {
+    id: String(i.id ?? ''),
+    text: String(i.text ?? ''),
+    isDone,
+    doneBy: isDone && typeof i.doneBy === 'string' ? i.doneBy : null,
+    doneAt: isDone && typeof i.doneAt === 'string' ? i.doneAt : null,
+    createdAt: typeof i.createdAt === 'string' ? i.createdAt : new Date(0).toISOString(),
+  };
+}
+
+export function parseChoreList(raw: unknown): ChoreList {
+  const l = (raw ?? {}) as Record<string, unknown>;
+  return {
+    id: String(l.id ?? ''),
+    title: String(l.title ?? ''),
+    assignee: typeof l.assignee === 'string' ? l.assignee : null,
+    createdBy: typeof l.createdBy === 'string' ? l.createdBy : null,
+    createdAt: typeof l.createdAt === 'string' ? l.createdAt : new Date(0).toISOString(),
+    items: Array.isArray(l.items) ? l.items.map(parseChoreItem) : [],
+  };
+}
+
+export async function getChoreLists(token: string, inviteCode: string): Promise<ChoreList[]> {
+  const data = await request('GET', `/conversations/${enc(inviteCode)}/chores`, { token });
+  return Array.isArray(data?.choreLists) ? data.choreLists.map(parseChoreList) : [];
+}
+
+export async function createChoreList(token: string, inviteCode: string, input: NewChoreList = {}): Promise<ChoreList> {
+  // Only send what was chosen, so the server fills in its own defaults for the rest.
+  const body: Record<string, unknown> = {};
+  if (input.title !== undefined && input.title.trim() !== '') body.title = input.title.trim();
+  if (input.assignee !== undefined) body.assignee = input.assignee;
+  const data = await request('POST', `/conversations/${enc(inviteCode)}/chores`, { token, body });
+  return parseChoreList(data?.choreList);
+}
+
+export async function deleteChoreList(token: string, listId: string): Promise<void> {
+  await request('DELETE', `/chores/${enc(listId)}`, { token });
+}
+
+export async function createChoreItem(token: string, listId: string, text: string): Promise<ChoreItem> {
+  const body = text.trim();
+  if (body.length < 1 || body.length > CHORE_ITEM_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `text must be between 1 and ${CHORE_ITEM_MAX_LENGTH} characters.`);
+  }
+  const data = await request('POST', `/chores/${enc(listId)}/items`, { token, body: { text: body } });
+  return parseChoreItem(data?.item);
+}
+
+export async function setChoreItemDone(token: string, itemId: string, isDone: boolean): Promise<ChoreItem> {
+  const data = await request('PATCH', `/chores/items/${enc(itemId)}`, { token, body: { isDone } });
+  return parseChoreItem(data?.item);
+}
+
+export async function deleteChoreItem(token: string, itemId: string): Promise<void> {
+  await request('DELETE', `/chores/items/${enc(itemId)}`, { token });
 }

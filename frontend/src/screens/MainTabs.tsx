@@ -45,7 +45,12 @@ export function MainTabs({ username, token, inviteCode, onLogout, onSessionExpir
         />
       </View>
       <View style={[styles.screen, tab !== 'chores' && styles.hidden]}>
-        <ChoresScreen username={username} />
+        <ChoresScreen
+          username={username}
+          token={token}
+          inviteCode={inviteCode}
+          onSessionExpired={onSessionExpired}
+        />
       </View>
       {/* Hidden while typing, so it doesn't sit between the keyboard and the text box. */}
       {!keyboardVisible && (

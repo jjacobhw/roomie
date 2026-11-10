@@ -19,3 +19,12 @@ export type ChoreList = {
 };
 
 export const CHORE_ITEM_MAX_LENGTH = 200; // matches the backend and database limit
+
+export const CHORE_TITLE_MAX_LENGTH = 80; // matches the backend and database limit
+
+// What you can set when creating a list. Leave a field out for the server's default:
+// the title becomes "<name>'s chores" and the list is assigned to you. assignee: null means the whole house.
+export type NewChoreList = {
+  title?: string;
+  assignee?: string | null;
+};
