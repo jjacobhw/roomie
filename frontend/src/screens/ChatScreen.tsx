@@ -26,11 +26,13 @@ type Props = {
   householdName: string | null;
   // Opens the household screen (members, rename, leave, log out).
   onOpenInfo: () => void;
+  // Opens the chores board.
+  onOpenChores: () => void;
   // The server says the session is no longer valid.
   onSessionExpired: () => void;
 };
 
-export function ChatScreen({ username, token, inviteCode, householdName, onOpenInfo, onSessionExpired }: Props) {
+export function ChatScreen({ username, token, inviteCode, householdName, onOpenInfo, onOpenChores, onSessionExpired }: Props) {
   const { messages, loading, loadError, sending, send, uploading, upload } = useConversation(
     token,
     inviteCode,
@@ -58,6 +60,14 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
               Invite code: <Text style={styles.headerCodeValue}>{inviteCode}</Text>
             </Text>
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Chores board"
+            onPress={onOpenChores}
+            style={[styles.infoButton, styles.choresButton]}
+          >
+            <Text style={styles.infoButtonText}>Chores</Text>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Household info and members"
@@ -99,7 +109,7 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
           <Composer onSend={send} sending={sending} onAttach={upload} uploading={uploading} />
           {USING_MOCK && (
             <Text style={styles.demoFootnote}>
-              Local preview only — this screen does not connect to the database yet.
+              Local preview only — set EXPO_PUBLIC_API_URL to connect to the database.
             </Text>
           )}
         </View>
@@ -163,6 +173,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 14,
     backgroundColor: colors.primarySoft,
+  },
+  choresButton: {
+    marginRight: 8,
   },
   infoButtonText: {
     color: colors.primary,
