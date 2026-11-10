@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { colors } from './src/constants/colors';
 import { AuthScreen } from './src/screens/AuthScreen';
+import { ChoresScreen } from './src/screens/ChoresScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { HouseholdInfoScreen } from './src/screens/HouseholdInfoScreen';
 import { JoinScreen } from './src/screens/JoinScreen';
@@ -12,11 +13,13 @@ import { Session } from './src/types/messaging';
 //   session      null -> sign in / sign up
 //   inviteCode   null -> create or join a household, otherwise -> the household's chat
 //   showInfo     true -> the household screen (members, rename, leave, log out) over the chat
+//   showChores   true -> the chores board over the chat
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [householdName, setHouseholdName] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [showChores, setShowChores] = useState(false);
   // True while we ask the server whether the user already belongs to a household.
   const [checking, setChecking] = useState(false);
   // Lets a slow answer be ignored if the user has already signed out (or in as someone else).
@@ -28,6 +31,7 @@ export default function App() {
     setInviteCode(null);
     setHouseholdName(null);
     setShowInfo(false);
+    setShowChores(false);
     setChecking(true);
     getMyConversation(newSession.token)
       .then((household) => {
@@ -50,6 +54,7 @@ export default function App() {
     setInviteCode(null);
     setHouseholdName(null);
     setShowInfo(false);
+    setShowChores(false);
     setChecking(false);
   }, []);
 
@@ -75,6 +80,7 @@ export default function App() {
     setInviteCode(null);
     setHouseholdName(null);
     setShowInfo(false);
+    setShowChores(false);
   }, []);
 
   // Log out: tell the server to forget the token (best effort), then go back to sign in.
@@ -123,6 +129,19 @@ export default function App() {
     );
   }
 
+  if (showChores) {
+    return (
+      <ChoresScreen
+        username={session.user.username}
+        token={session.token}
+        inviteCode={inviteCode}
+        householdName={householdName}
+        onBack={() => setShowChores(false)}
+        onSessionExpired={reset}
+      />
+    );
+  }
+
   return (
     <ChatScreen
       username={session.user.username}
@@ -130,6 +149,7 @@ export default function App() {
       inviteCode={inviteCode}
       householdName={householdName}
       onOpenInfo={() => setShowInfo(true)}
+      onOpenChores={() => setShowChores(true)}
       onSessionExpired={reset}
     />
   );

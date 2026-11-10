@@ -5,6 +5,8 @@ import { API_URL } from '../config';
 import { sortMembers } from '../utils/members';
 import {
   AuthUser,
+  ChoreItem,
+  ChoreList,
   ConversationSummary,
   HouseholdMember,
   Message,
@@ -309,4 +311,69 @@ export async function uploadAttachment(
     throw new MessagingError('SERVER_ERROR', 'The server did not confirm the upload');
   }
   return { id: a.id, fileName: a.fileName, contentType: a.contentType, sizeBytes: a.sizeBytes };
+}
+
+// ---- Chores -------------------------------------------------------------------------------
+
+function parseChoreItem(raw: unknown): ChoreItem {
+  const i = (raw ?? {}) as Record<string, unknown>;
+  if (i.id === undefined || i.id === null || typeof i.text !== 'string') {
+    throw new MessagingError('SERVER_ERROR', 'The server sent an unexpected chore');
+  }
+  return {
+    id: String(i.id),
+    text: i.text,
+    isDone: i.isDone === true,
+    doneBy: typeof i.doneBy === 'string' ? i.doneBy : null,
+    doneAt: typeof i.doneAt === 'string' ? i.doneAt : null,
+    createdAt: typeof i.createdAt === 'string' ? i.createdAt : new Date(0).toISOString(),
+  };
+}
+
+function parseChoreList(raw: unknown): ChoreList {
+  const l = (raw ?? {}) as Record<string, unknown>;
+  if (typeof l.id !== 'string' || typeof l.title !== 'string') {
+    throw new MessagingError('SERVER_ERROR', 'The server sent an unexpected chore list');
+  }
+  return {
+    id: l.id,
+    title: l.title,
+    assignee: typeof l.assignee === 'string' ? l.assignee : null,
+    createdBy: typeof l.createdBy === 'string' ? l.createdBy : null,
+    createdAt: typeof l.createdAt === 'string' ? l.createdAt : new Date(0).toISOString(),
+    items: Array.isArray(l.items) ? l.items.map(parseChoreItem) : [],
+  };
+}
+
+export async function getChores(token: string, inviteCode: string): Promise<ChoreList[]> {
+  const data = await request('GET', `/conversations/${enc(inviteCode)}/chores`, { token });
+  return Array.isArray(data?.choreLists) ? data.choreLists.map(parseChoreList) : [];
+}
+
+// assignee: a username, null for the whole house, or undefined for the signed-in user.
+export async function createChoreList(
+  token: string,
+  inviteCode: string,
+  options: { title?: string; assignee?: string | null } = {},
+): Promise<ChoreList> {
+  const data = await request('POST', `/conversations/${enc(inviteCode)}/chores`, { token, body: options });
+  return parseChoreList(data?.choreList);
+}
+
+export async function deleteChoreList(token: string, listId: string): Promise<void> {
+  await request('DELETE', `/chores/${enc(listId)}`, { token });
+}
+
+export async function addChoreItem(token: string, listId: string, text: string): Promise<ChoreItem> {
+  const data = await request('POST', `/chores/${enc(listId)}/items`, { token, body: { text } });
+  return parseChoreItem(data?.item);
+}
+
+export async function setChoreItemDone(token: string, itemId: string, isDone: boolean): Promise<ChoreItem> {
+  const data = await request('PATCH', `/chores/items/${enc(itemId)}`, { token, body: { isDone } });
+  return parseChoreItem(data?.item);
+}
+
+export async function deleteChoreItem(token: string, itemId: string): Promise<void> {
+  await request('DELETE', `/chores/items/${enc(itemId)}`, { token });
 }

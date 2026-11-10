@@ -2,6 +2,10 @@
 // It mimics backend/routes.ts: accounts with passwords, tokens, members-only households,
 // one household per user, and a 3-second cooldown per sender. Same functions as httpApi.ts.
 import {
+  CHORE_TEXT_MAX_LENGTH,
+  CHORE_TITLE_MAX_LENGTH,
+  ChoreItem,
+  ChoreList,
   ConversationSummary,
   HOUSEHOLD_NAME_MAX_LENGTH,
   HouseholdMember,
@@ -24,7 +28,14 @@ const MAX_MESSAGE_LENGTH = 2000;
 
 type Account = { id: string; username: string; password: string };
 // members is in join order, which decides who becomes owner when the owner leaves.
-type House = { inviteCode: string; name: string; owner: string; members: string[]; messages: Message[] };
+type House = {
+  inviteCode: string;
+  name: string;
+  owner: string;
+  members: string[];
+  messages: Message[];
+  chores: ChoreList[];
+};
 
 const accounts = new Map<string, Account>(); // lowercase username -> account
 const sessions = new Map<string, string>(); // token -> lowercase username
@@ -47,6 +58,19 @@ houses.set('DEMO12', {
       messageText: 'Welcome to the crib chat!',
       timestamp: new Date().toISOString(),
       attachments: [],
+    },
+  ],
+  chores: [
+    {
+      id: 'seed-list-1',
+      title: 'House chores',
+      assignee: null,
+      createdBy: 'Austin ligmarche',
+      createdAt: new Date().toISOString(),
+      items: [
+        { id: 'seed-item-1', text: 'Take out the trash', isDone: false, doneBy: null, doneAt: null, createdAt: new Date().toISOString() },
+        { id: 'seed-item-2', text: 'Wipe the counters', isDone: true, doneBy: 'Austin ligmarche', doneAt: new Date().toISOString(), createdAt: new Date().toISOString() },
+      ],
     },
   ],
 });
@@ -153,6 +177,7 @@ export async function createConversation(token: string): Promise<string> {
     owner: account.username,
     members: [account.username],
     messages: [],
+    chores: [],
   });
   return inviteCode;
 }
@@ -275,4 +300,111 @@ export async function uploadAttachment(
     url: file.uri,
   });
   return { id, fileName: file.name, contentType: file.mimeType, sizeBytes: file.sizeBytes };
+}
+
+// ---- Chores -------------------------------------------------------------------------------
+
+function findList(account: Account, listId: string): { house: House; list: ChoreList } {
+  for (const house of houses.values()) {
+    const list = house.chores.find((l) => l.id === listId);
+    if (list) {
+      memberHouse(account, house.inviteCode);
+      return { house, list };
+    }
+  }
+  throw new MessagingError('CONVERSATION_NOT_FOUND', 'Chore list not found.');
+}
+
+function findItem(account: Account, itemId: string): { list: ChoreList; item: ChoreItem } {
+  for (const house of houses.values()) {
+    for (const list of house.chores) {
+      const item = list.items.find((i) => i.id === itemId);
+      if (item) {
+        memberHouse(account, house.inviteCode);
+        return { list, item };
+      }
+    }
+  }
+  throw new MessagingError('CONVERSATION_NOT_FOUND', 'Chore item not found.');
+}
+
+export async function getChores(token: string, inviteCode: string): Promise<ChoreList[]> {
+  await delay();
+  const house = memberHouse(accountFor(token), inviteCode);
+  return JSON.parse(JSON.stringify(house.chores));
+}
+
+export async function createChoreList(
+  token: string,
+  inviteCode: string,
+  options: { title?: string; assignee?: string | null } = {},
+): Promise<ChoreList> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+
+  let assignee: string | null = account.username;
+  if (options.assignee === null) {
+    assignee = null;
+  } else if (typeof options.assignee === 'string') {
+    const wanted = options.assignee.trim().toLowerCase();
+    assignee = house.members.find((m) => m.toLowerCase() === wanted) ?? null;
+    if (!assignee) throw new MessagingError('INVALID_INPUT', 'assignee is not a member of this conversation.');
+  }
+  const title = options.title?.trim() || (assignee ? `${assignee}'s chores` : 'House chores');
+  if (title.length > CHORE_TITLE_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `title must be at most ${CHORE_TITLE_MAX_LENGTH} characters.`);
+  }
+  const list: ChoreList = {
+    id: randomId(),
+    title,
+    assignee,
+    createdBy: account.username,
+    createdAt: new Date().toISOString(),
+    items: [],
+  };
+  house.chores.push(list);
+  return { ...list };
+}
+
+export async function deleteChoreList(token: string, listId: string): Promise<void> {
+  await delay();
+  const { house, list } = findList(accountFor(token), listId);
+  house.chores = house.chores.filter((l) => l !== list);
+}
+
+export async function addChoreItem(token: string, listId: string, text: string): Promise<ChoreItem> {
+  await delay();
+  const account = accountFor(token);
+  const { list } = findList(account, listId);
+  const trimmed = text.trim();
+  if (trimmed.length < 1 || trimmed.length > CHORE_TEXT_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `text must be between 1 and ${CHORE_TEXT_MAX_LENGTH} characters.`);
+  }
+  const item: ChoreItem = {
+    id: randomId(),
+    text: trimmed,
+    isDone: false,
+    doneBy: null,
+    doneAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  list.items.push(item);
+  return { ...item };
+}
+
+export async function setChoreItemDone(token: string, itemId: string, isDone: boolean): Promise<ChoreItem> {
+  await delay();
+  const account = accountFor(token);
+  const { item } = findItem(account, itemId);
+  item.isDone = isDone;
+  item.doneBy = isDone ? account.username : null;
+  item.doneAt = isDone ? new Date().toISOString() : null;
+  return { ...item };
+}
+
+export async function deleteChoreItem(token: string, itemId: string): Promise<void> {
+  await delay();
+  const { list, item } = findItem(accountFor(token), itemId);
+  list.items = list.items.filter((i) => i !== item);
 }
