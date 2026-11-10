@@ -10,6 +10,8 @@ import {
 } from '../types/chores';
 import {
   ConversationSummary,
+  HOUSEHOLD_NAME_MAX_LENGTH,
+  HouseholdMember,
   Message,
   MessageAttachment,
   MessagingError,
@@ -21,13 +23,22 @@ import {
   USERNAME_MAX_LENGTH,
   checkAttachment,
 } from '../types/messaging';
+import { sortMembers } from '../utils/members';
 
 const FAKE_NETWORK_DELAY_MS = 250;
 const COOLDOWN_MS = 3000; // Sprint 1: the server enforces 3s between messages per sender
 const MAX_MESSAGE_LENGTH = 2000;
 
 type Account = { id: string; username: string; password: string };
-type House = { inviteCode: string; name: string; members: string[]; messages: Message[]; choreLists: ChoreList[] };
+// members is in join order, which decides who becomes owner when the owner leaves.
+type House = {
+  inviteCode: string;
+  name: string;
+  owner: string;
+  members: string[];
+  messages: Message[];
+  choreLists: ChoreList[];
+};
 
 const accounts = new Map<string, Account>(); // lowercase username -> account
 const sessions = new Map<string, string>(); // token -> lowercase username
@@ -41,6 +52,7 @@ const uploads = new Map<string, MessageAttachment & { owner: string }>();
 houses.set('DEMO12', {
   inviteCode: 'DEMO12',
   name: 'Demo household',
+  owner: 'Austin ligmarche',
   members: ['Austin ligmarche'],
   choreLists: [],
   messages: [
@@ -153,6 +165,7 @@ export async function createConversation(token: string): Promise<string> {
   houses.set(inviteCode, {
     inviteCode,
     name: `${account.username}'s household`,
+    owner: account.username,
     members: [account.username],
     messages: [],
     choreLists: [],
@@ -169,6 +182,43 @@ export async function joinConversation(token: string, inviteCode: string): Promi
     throw new MessagingError('ALREADY_IN_CONVERSATION', 'User already belongs to a conversation.');
   }
   house.members.push(account.username);
+}
+
+export async function getMembers(token: string, inviteCode: string): Promise<HouseholdMember[]> {
+  await delay();
+  const house = memberHouse(accountFor(token), inviteCode);
+  return sortMembers(
+    house.members.map((username) => ({ username, role: username === house.owner ? 'owner' : 'member' })),
+  );
+}
+
+export async function renameConversation(token: string, inviteCode: string, name: string): Promise<string> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+  if (house.owner !== account.username) {
+    throw new MessagingError('NOT_A_MEMBER', 'Only the owner can rename this household.');
+  }
+  const trimmed = name.trim();
+  if (trimmed.length < 1 || trimmed.length > HOUSEHOLD_NAME_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `name must be between 1 and ${HOUSEHOLD_NAME_MAX_LENGTH} characters.`);
+  }
+  house.name = trimmed;
+  return trimmed;
+}
+
+// Like the server: an owner who leaves hands the house to the longest-standing member,
+// and the last person out deletes it.
+export async function leaveConversation(token: string, inviteCode: string): Promise<void> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+  house.members = house.members.filter((m) => m !== account.username);
+  if (house.members.length === 0) {
+    houses.delete(inviteCode);
+  } else if (house.owner === account.username) {
+    house.owner = house.members[0];
+  }
 }
 
 // Returns messages oldest-first, which is the order the screen displays them.

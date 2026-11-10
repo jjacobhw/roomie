@@ -19,12 +19,15 @@ type Props = {
   username: string;
   token: string;
   inviteCode: string;
-  onLogout: () => void;
+  // Null until App has heard it from the server.
+  householdName: string | null;
+  // Opens the household screen (members, rename, leave, log out).
+  onOpenInfo: () => void;
   onSessionExpired: () => void;
 };
 
 // The signed-in app: the Chat and Chores screens with a tab bar at the bottom.
-export function MainTabs({ username, token, inviteCode, onLogout, onSessionExpired }: Props) {
+export function MainTabs({ username, token, inviteCode, householdName, onOpenInfo, onSessionExpired }: Props) {
   const [tab, setTab] = useState<TabKey>('chat');
   const keyboardVisible = useKeyboardVisible();
   // The phone's status bar (top) and home indicator (bottom). The top padding keeps the screens
@@ -40,7 +43,8 @@ export function MainTabs({ username, token, inviteCode, onLogout, onSessionExpir
           username={username}
           token={token}
           inviteCode={inviteCode}
-          onLogout={onLogout}
+          householdName={householdName}
+          onOpenInfo={onOpenInfo}
           onSessionExpired={onSessionExpired}
         />
       </View>

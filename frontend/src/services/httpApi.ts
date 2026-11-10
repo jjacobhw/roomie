@@ -3,9 +3,11 @@
 // Everything except sign up and sign in needs the token from signUp/signIn.
 import { API_URL } from '../config';
 import { CHORE_ITEM_MAX_LENGTH, ChoreItem, ChoreList, NewChoreList } from '../types/chores';
+import { sortMembers } from '../utils/members';
 import {
   AuthUser,
   ConversationSummary,
+  HouseholdMember,
   Message,
   MessageAttachment,
   MessagingError,
@@ -206,6 +208,35 @@ export async function createConversation(token: string): Promise<string> {
 
 export async function joinConversation(token: string, inviteCode: string): Promise<void> {
   await request('POST', `/conversations/${enc(inviteCode)}/members`, { token });
+}
+
+// Everyone in the household, owner first, then by name.
+export async function getMembers(token: string, inviteCode: string): Promise<HouseholdMember[]> {
+  const data = await request('GET', `/conversations/${enc(inviteCode)}/users`, { token });
+  const list: unknown[] = Array.isArray(data?.users) ? data.users : [];
+  return sortMembers(
+    list.flatMap((item) => {
+      const u = (item ?? {}) as Record<string, unknown>;
+      if (typeof u.username !== 'string') return [];
+      return [{ username: u.username, role: u.role === 'owner' ? 'owner' : 'member' } as HouseholdMember];
+    }),
+  );
+}
+
+// Owner only. Returns the name as the server saved it (trimmed).
+export async function renameConversation(token: string, inviteCode: string, name: string): Promise<string> {
+  const data = await request('PATCH', `/conversations/${enc(inviteCode)}`, { token, body: { name } });
+  const saved = data?.conversation?.name;
+  if (typeof saved !== 'string') {
+    throw new MessagingError('SERVER_ERROR', 'The server sent an unexpected rename response');
+  }
+  return saved;
+}
+
+// If the owner leaves, the server hands ownership to the longest-standing member
+// (or deletes the household when nobody is left).
+export async function leaveConversation(token: string, inviteCode: string): Promise<void> {
+  await request('DELETE', `/conversations/${enc(inviteCode)}/members`, { token });
 }
 
 export async function getMessages(token: string, inviteCode: string): Promise<Message[]> {

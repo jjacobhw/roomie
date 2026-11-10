@@ -23,3 +23,6 @@ export const deleteChoreList = api.deleteChoreList;
 export const createChoreItem = api.createChoreItem;
 export const setChoreItemDone = api.setChoreItemDone;
 export const deleteChoreItem = api.deleteChoreItem;
+export const getMembers = api.getMembers;
+export const renameConversation = api.renameConversation;
+export const leaveConversation = api.leaveConversation;
