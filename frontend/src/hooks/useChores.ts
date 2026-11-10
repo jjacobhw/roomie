@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createChoreItem,
   createChoreList,
+  deleteChoreItem,
+  deleteChoreList,
   getChoreLists,
   setChoreItemDone,
 } from '../services/messagingApi';
 import { ChoreList, NewChoreList } from '../types/chores';
 import { MessagingError } from '../types/messaging';
-import { appendChoreItem, appendChoreList, toggleChoreItem } from '../utils/chores';
+import { appendChoreItem, appendChoreList, removeChoreItem, removeChoreList, toggleChoreItem } from '../utils/chores';
 
 const POLL_INTERVAL_MS = 5000; // so one roommate's checkmark shows up for the others
 
@@ -122,5 +124,32 @@ export function useChores(
     [change, token, inviteCode],
   );
 
-  return { lists, loading, loadError, toggle, addItem, createList };
+  // Deleting something a roommate already deleted is fine: it's gone either way, so no error.
+  const ignoreAlreadyGone = async (action: () => Promise<void>) => {
+    try {
+      await action();
+    } catch (e) {
+      if (!(e instanceof MessagingError && e.code === 'CONVERSATION_NOT_FOUND')) throw e;
+    }
+  };
+
+  const removeItem = useCallback(
+    (itemId: string) =>
+      change(
+        () => ignoreAlreadyGone(() => deleteChoreItem(token, itemId)),
+        () => setLists((current) => removeChoreItem(current, itemId)),
+      ),
+    [change, token],
+  );
+
+  const removeList = useCallback(
+    (listId: string) =>
+      change(
+        () => ignoreAlreadyGone(() => deleteChoreList(token, listId)),
+        () => setLists((current) => removeChoreList(current, listId)),
+      ),
+    [change, token],
+  );
+
+  return { lists, loading, loadError, toggle, addItem, createList, removeItem, removeList };
 }

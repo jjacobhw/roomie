@@ -37,6 +37,20 @@ export function appendChoreList(lists: ChoreList[], list: ChoreList): ChoreList[
   return lists.some((existing) => existing.id === list.id) ? lists : [...lists, list];
 }
 
+// Take one chore out of whichever list holds it. Lists that don't hold it come back untouched.
+export function removeChoreItem(lists: ChoreList[], itemId: string): ChoreList[] {
+  return lists.map((list) =>
+    list.items.some((item) => item.id === itemId)
+      ? { ...list, items: list.items.filter((item) => item.id !== itemId) }
+      : list,
+  );
+}
+
+// Take a whole list out. If it isn't there, the same lists come back.
+export function removeChoreList(lists: ChoreList[], listId: string): ChoreList[] {
+  return lists.some((list) => list.id === listId) ? lists.filter((list) => list.id !== listId) : lists;
+}
+
 export function choreProgress(list: ChoreList): { done: number; total: number } {
   return { done: list.items.filter((item) => item.isDone).length, total: list.items.length };
 }

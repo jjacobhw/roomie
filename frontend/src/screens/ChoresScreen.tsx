@@ -15,6 +15,7 @@ import { USING_MOCK } from '../config';
 import { useChores } from '../hooks/useChores';
 import { CHORE_ITEM_MAX_LENGTH, CHORE_TITLE_MAX_LENGTH, ChoreList } from '../types/chores';
 import { choreProgress } from '../utils/chores';
+import { confirmAction } from '../utils/confirm';
 
 type Props = {
   username: string;
@@ -37,7 +38,7 @@ function formatTime(iso: string): string {
 // The household's chore lists, loaded from the server and refreshed every few seconds so a
 // roommate's checkmark shows up here too.
 export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: Props) {
-  const { lists, loading, loadError, toggle, addItem, createList } = useChores(
+  const { lists, loading, loadError, toggle, addItem, createList, removeItem, removeList } = useChores(
     token,
     inviteCode,
     username,
@@ -55,6 +56,21 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
   async function handleToggle(itemId: string, isDone: boolean) {
     setActionError(null);
     const result = await toggle(itemId, isDone);
+    if (!result.ok) setActionError(result.error);
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    setActionError(null);
+    const result = await removeItem(itemId);
+    if (!result.ok) setActionError(result.error);
+  }
+
+  async function handleDeleteList(list: ChoreList) {
+    const count = list.items.length;
+    const detail = count === 0 ? 'It has no chores.' : `Its ${count === 1 ? '1 chore' : `${count} chores`} will be deleted too.`;
+    if (!(await confirmAction(`Delete “${list.title}”?`, detail, 'Delete'))) return;
+    setActionError(null);
+    const result = await removeList(list.id);
     if (!result.ok) setActionError(result.error);
   }
 
@@ -138,26 +154,36 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
                 </View>
 
                 {list.items.map((item) => (
-                  <Pressable
-                    key={item.id}
-                    accessibilityLabel={`${item.text}, ${item.isDone ? 'done' : 'not done'}`}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: item.isDone }}
-                    onPress={() => handleToggle(item.id, !item.isDone)}
-                    style={styles.itemRow}
-                  >
-                    <View style={[styles.checkbox, item.isDone && styles.checkboxChecked]}>
-                      {item.isDone && <Text style={styles.checkmark}>✓</Text>}
-                    </View>
-                    <View style={styles.itemCopy}>
-                      <Text style={[styles.itemText, item.isDone && styles.itemTextDone]}>{item.text}</Text>
-                      {item.isDone && item.doneBy && item.doneAt && (
-                        <Text style={styles.itemMeta}>
-                          Done by {item.doneBy === username ? 'you' : item.doneBy} at {formatTime(item.doneAt)}
-                        </Text>
-                      )}
-                    </View>
-                  </Pressable>
+                  <View key={item.id} style={styles.itemRow}>
+                    <Pressable
+                      accessibilityLabel={`${item.text}, ${item.isDone ? 'done' : 'not done'}`}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: item.isDone }}
+                      onPress={() => handleToggle(item.id, !item.isDone)}
+                      style={styles.itemMain}
+                    >
+                      <View style={[styles.checkbox, item.isDone && styles.checkboxChecked]}>
+                        {item.isDone && <Text style={styles.checkmark}>✓</Text>}
+                      </View>
+                      <View style={styles.itemCopy}>
+                        <Text style={[styles.itemText, item.isDone && styles.itemTextDone]}>{item.text}</Text>
+                        {item.isDone && item.doneBy && item.doneAt && (
+                          <Text style={styles.itemMeta}>
+                            Done by {item.doneBy === username ? 'you' : item.doneBy} at {formatTime(item.doneAt)}
+                          </Text>
+                        )}
+                      </View>
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel={`Delete ${item.text}`}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                      onPress={() => handleDeleteItem(item.id)}
+                      style={styles.removeButton}
+                    >
+                      <Text style={styles.removeButtonText}>✕</Text>
+                    </Pressable>
+                  </View>
                 ))}
 
                 <View style={styles.addRow}>
@@ -182,6 +208,16 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
                     <Text style={styles.addButtonText}>+</Text>
                   </Pressable>
                 </View>
+
+                <Pressable
+                  accessibilityLabel={`Delete list ${list.title}`}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => handleDeleteList(list)}
+                  style={styles.deleteListButton}
+                >
+                  <Text style={styles.deleteListText}>Delete list</Text>
+                </Pressable>
               </View>
             );
           })}
@@ -334,7 +370,30 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  itemMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 10,
+  },
+  removeButton: {
+    paddingVertical: 10,
+    paddingLeft: 12,
+    paddingRight: 4,
+  },
+  removeButtonText: {
+    color: colors.textFaint,
+    fontSize: 15,
+  },
+  deleteListButton: {
+    alignSelf: 'flex-end',
+    marginTop: 14,
+  },
+  deleteListText: {
+    color: colors.error,
+    fontSize: 12,
+    fontWeight: '600',
   },
   checkbox: {
     width: 24,
