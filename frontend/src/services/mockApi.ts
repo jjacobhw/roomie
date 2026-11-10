@@ -54,7 +54,20 @@ houses.set('DEMO12', {
   name: 'Demo household',
   owner: 'Austin ligmarche',
   members: ['Austin ligmarche'],
-  choreLists: [],
+  // A sample list so the Chores tab isn't empty in fake-data mode.
+  choreLists: [
+    {
+      id: 'seed-list-1',
+      title: 'House chores',
+      assignee: null,
+      createdBy: 'Austin ligmarche',
+      createdAt: new Date().toISOString(),
+      items: [
+        { id: 'seed-item-1', text: 'Take out the trash', isDone: false, doneBy: null, doneAt: null, createdAt: new Date().toISOString() },
+        { id: 'seed-item-2', text: 'Wipe the counters', isDone: true, doneBy: 'Austin ligmarche', doneAt: new Date().toISOString(), createdAt: new Date().toISOString() },
+      ],
+    },
+  ],
   messages: [
     {
       id: 'seed-1',

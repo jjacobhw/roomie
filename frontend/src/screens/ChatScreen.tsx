@@ -98,7 +98,7 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
           <Composer onSend={send} sending={sending} onAttach={upload} uploading={uploading} />
           {USING_MOCK && (
             <Text style={styles.demoFootnote}>
-              Local preview only — this screen does not connect to the database yet.
+              Local preview only — set EXPO_PUBLIC_API_URL to connect to the database.
             </Text>
           )}
         </View>
