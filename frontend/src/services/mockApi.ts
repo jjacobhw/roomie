@@ -2,7 +2,16 @@
 // It mimics backend/routes.ts: accounts with passwords, tokens, members-only households,
 // one household per user, and a 3-second cooldown per sender. Same functions as httpApi.ts.
 import {
+  CHORE_ITEM_MAX_LENGTH,
+  CHORE_TITLE_MAX_LENGTH,
+  ChoreItem,
+  ChoreList,
+  NewChoreList,
+} from '../types/chores';
+import {
   ConversationSummary,
+  HOUSEHOLD_NAME_MAX_LENGTH,
+  HouseholdMember,
   Message,
   MessageAttachment,
   MessagingError,
@@ -14,13 +23,22 @@ import {
   USERNAME_MAX_LENGTH,
   checkAttachment,
 } from '../types/messaging';
+import { sortMembers } from '../utils/members';
 
 const FAKE_NETWORK_DELAY_MS = 250;
 const COOLDOWN_MS = 3000; // Sprint 1: the server enforces 3s between messages per sender
 const MAX_MESSAGE_LENGTH = 2000;
 
 type Account = { id: string; username: string; password: string };
-type House = { inviteCode: string; name: string; members: string[]; messages: Message[] };
+// members is in join order, which decides who becomes owner when the owner leaves.
+type House = {
+  inviteCode: string;
+  name: string;
+  owner: string;
+  members: string[];
+  messages: Message[];
+  choreLists: ChoreList[];
+};
 
 const accounts = new Map<string, Account>(); // lowercase username -> account
 const sessions = new Map<string, string>(); // token -> lowercase username
@@ -34,7 +52,22 @@ const uploads = new Map<string, MessageAttachment & { owner: string }>();
 houses.set('DEMO12', {
   inviteCode: 'DEMO12',
   name: 'Demo household',
+  owner: 'Austin ligmarche',
   members: ['Austin ligmarche'],
+  // A sample list so the Chores tab isn't empty in fake-data mode.
+  choreLists: [
+    {
+      id: 'seed-list-1',
+      title: 'House chores',
+      assignee: null,
+      createdBy: 'Austin ligmarche',
+      createdAt: new Date().toISOString(),
+      items: [
+        { id: 'seed-item-1', text: 'Take out the trash', isDone: false, doneBy: null, doneAt: null, createdAt: new Date().toISOString() },
+        { id: 'seed-item-2', text: 'Wipe the counters', isDone: true, doneBy: 'Austin ligmarche', doneAt: new Date().toISOString(), createdAt: new Date().toISOString() },
+      ],
+    },
+  ],
   messages: [
     {
       id: 'seed-1',
@@ -145,8 +178,10 @@ export async function createConversation(token: string): Promise<string> {
   houses.set(inviteCode, {
     inviteCode,
     name: `${account.username}'s household`,
+    owner: account.username,
     members: [account.username],
     messages: [],
+    choreLists: [],
   });
   return inviteCode;
 }
@@ -160,6 +195,43 @@ export async function joinConversation(token: string, inviteCode: string): Promi
     throw new MessagingError('ALREADY_IN_CONVERSATION', 'User already belongs to a conversation.');
   }
   house.members.push(account.username);
+}
+
+export async function getMembers(token: string, inviteCode: string): Promise<HouseholdMember[]> {
+  await delay();
+  const house = memberHouse(accountFor(token), inviteCode);
+  return sortMembers(
+    house.members.map((username) => ({ username, role: username === house.owner ? 'owner' : 'member' })),
+  );
+}
+
+export async function renameConversation(token: string, inviteCode: string, name: string): Promise<string> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+  if (house.owner !== account.username) {
+    throw new MessagingError('NOT_A_MEMBER', 'Only the owner can rename this household.');
+  }
+  const trimmed = name.trim();
+  if (trimmed.length < 1 || trimmed.length > HOUSEHOLD_NAME_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `name must be between 1 and ${HOUSEHOLD_NAME_MAX_LENGTH} characters.`);
+  }
+  house.name = trimmed;
+  return trimmed;
+}
+
+// Like the server: an owner who leaves hands the house to the longest-standing member,
+// and the last person out deletes it.
+export async function leaveConversation(token: string, inviteCode: string): Promise<void> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+  house.members = house.members.filter((m) => m !== account.username);
+  if (house.members.length === 0) {
+    houses.delete(inviteCode);
+  } else if (house.owner === account.username) {
+    house.owner = house.members[0];
+  }
 }
 
 // Returns messages oldest-first, which is the order the screen displays them.
@@ -232,4 +304,121 @@ export async function uploadAttachment(
     url: file.uri,
   });
   return { id, fileName: file.name, contentType: file.mimeType, sizeBytes: file.sizeBytes };
+}
+
+// ---- Chores -----------------------------------------------------------------------------------
+// Same rules as the real server: members only, a list can belong to one roommate or the whole
+// house, checking an item records who did it and when, and anyone in the household can change anything.
+
+let nextChoreItemId = 1;
+
+function listAndHouse(account: Account, listId: string): { house: House; list: ChoreList } {
+  for (const house of houses.values()) {
+    const list = house.choreLists.find((l) => l.id === listId);
+    if (list) {
+      if (!house.members.includes(account.username)) {
+        throw new MessagingError('NOT_A_MEMBER', 'User is not a member of this conversation.');
+      }
+      return { house, list };
+    }
+  }
+  throw new MessagingError('CONVERSATION_NOT_FOUND', 'Chore list not found.');
+}
+
+function findItem(account: Account, itemId: string): { list: ChoreList; item: ChoreItem } {
+  for (const house of houses.values()) {
+    for (const list of house.choreLists) {
+      const item = list.items.find((i) => i.id === itemId);
+      if (item) {
+        if (!house.members.includes(account.username)) {
+          throw new MessagingError('NOT_A_MEMBER', 'User is not a member of this conversation.');
+        }
+        return { list, item };
+      }
+    }
+  }
+  throw new MessagingError('CONVERSATION_NOT_FOUND', 'Chore item not found.');
+}
+
+export async function getChoreLists(token: string, inviteCode: string): Promise<ChoreList[]> {
+  await delay();
+  const house = memberHouse(accountFor(token), inviteCode);
+  // A copy, so callers can't change the fake database by accident.
+  return house.choreLists.map((list) => ({ ...list, items: list.items.map((item) => ({ ...item })) }));
+}
+
+export async function createChoreList(token: string, inviteCode: string, input: NewChoreList = {}): Promise<ChoreList> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+
+  // assignee left out = you, null = the whole house, otherwise it must be a roommate.
+  let assignee: string | null = account.username;
+  if (input.assignee === null) {
+    assignee = null;
+  } else if (typeof input.assignee === 'string') {
+    const member = house.members.find((m) => m.toLowerCase() === input.assignee!.trim().toLowerCase());
+    if (!member) {
+      throw new MessagingError('INVALID_INPUT', 'assignee is not a member of this conversation.');
+    }
+    assignee = member;
+  }
+
+  const typed = input.title?.trim() ?? '';
+  const title = typed !== '' ? typed : assignee ? `${assignee}'s chores` : 'House chores';
+  if (title.length > CHORE_TITLE_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `title must be at most ${CHORE_TITLE_MAX_LENGTH} characters.`);
+  }
+
+  const list: ChoreList = {
+    id: `list-${randomId()}${randomId()}`,
+    title,
+    assignee,
+    createdBy: account.username,
+    createdAt: new Date().toISOString(),
+    items: [],
+  };
+  house.choreLists.push(list);
+  return { ...list, items: [] };
+}
+
+export async function deleteChoreList(token: string, listId: string): Promise<void> {
+  await delay();
+  const { house, list } = listAndHouse(accountFor(token), listId);
+  house.choreLists = house.choreLists.filter((l) => l !== list);
+}
+
+export async function createChoreItem(token: string, listId: string, text: string): Promise<ChoreItem> {
+  await delay();
+  const { list } = listAndHouse(accountFor(token), listId);
+  const body = text.trim();
+  if (body.length < 1 || body.length > CHORE_ITEM_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `text must be between 1 and ${CHORE_ITEM_MAX_LENGTH} characters.`);
+  }
+  const item: ChoreItem = {
+    id: String(nextChoreItemId++),
+    text: body,
+    isDone: false,
+    doneBy: null,
+    doneAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  list.items.push(item);
+  return { ...item };
+}
+
+export async function setChoreItemDone(token: string, itemId: string, isDone: boolean): Promise<ChoreItem> {
+  await delay();
+  const account = accountFor(token);
+  const { item } = findItem(account, itemId);
+  item.isDone = isDone;
+  item.doneBy = isDone ? account.username : null;
+  item.doneAt = isDone ? new Date().toISOString() : null;
+  return { ...item };
+}
+
+export async function deleteChoreItem(token: string, itemId: string): Promise<void> {
+  await delay();
+  const { list, item } = findItem(accountFor(token), itemId);
+  list.items = list.items.filter((i) => i !== item);
 }

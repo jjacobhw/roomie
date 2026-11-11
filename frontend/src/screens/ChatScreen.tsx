@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   type ScrollViewInstance,
   StyleSheet,
@@ -22,13 +21,15 @@ type Props = {
   username: string;
   token: string;
   inviteCode: string;
-  // Sign out and go back to the sign-in screen.
-  onLogout: () => void;
+  // Null until App has heard it from the server.
+  householdName: string | null;
+  // Opens the household screen (members, rename, leave, log out).
+  onOpenInfo: () => void;
   // The server says the session is no longer valid.
   onSessionExpired: () => void;
 };
 
-export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExpired }: Props) {
+export function ChatScreen({ username, token, inviteCode, householdName, onOpenInfo, onSessionExpired }: Props) {
   const { messages, loading, loadError, sending, send, uploading, upload } = useConversation(
     token,
     inviteCode,
@@ -37,7 +38,7 @@ export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExp
   const scrollRef = useRef<ScrollViewInstance>(null);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -48,15 +49,21 @@ export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExp
             <Text style={styles.headerIconText}>R</Text>
           </View>
           <View style={styles.headerTitleGroup}>
-            {/* Temporary name until households can be named. */}
-            <Text style={styles.headerTitle}>House chat</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {householdName || 'House chat'}
+            </Text>
             {/* selectable: press and hold to copy the code and send it to a roommate. */}
             <Text selectable style={styles.headerCode}>
               Invite code: <Text style={styles.headerCodeValue}>{inviteCode}</Text>
             </Text>
           </View>
-          <Pressable accessibilityRole="button" onPress={onLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutButtonText}>Log out</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Household info and members"
+            onPress={onOpenInfo}
+            style={styles.infoButton}
+          >
+            <Text style={styles.infoButtonText}>Members</Text>
           </Pressable>
         </View>
 
@@ -91,12 +98,12 @@ export function ChatScreen({ username, token, inviteCode, onLogout, onSessionExp
           <Composer onSend={send} sending={sending} onAttach={upload} uploading={uploading} />
           {USING_MOCK && (
             <Text style={styles.demoFootnote}>
-              Local preview only — this screen does not connect to the database yet.
+              Local preview only — set EXPO_PUBLIC_API_URL to connect to the database.
             </Text>
           )}
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -148,13 +155,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.5,
   },
-  logoutButton: {
+  infoButton: {
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: 7,
     paddingHorizontal: 12,
     borderRadius: 14,
     backgroundColor: colors.primarySoft,
   },
-  logoutButtonText: {
+  infoButtonText: {
     color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
