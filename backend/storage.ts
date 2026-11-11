@@ -110,6 +110,17 @@ export async function publicAttachment(attachment: StoredAttachment) {
   };
 }
 
+// Signs every attachment of a message. A storage failure on one file is logged and that file is
+// left out, so a single bad object can never turn the whole message list into a 500.
+export async function publicAttachments(attachments: StoredAttachment[]) {
+  const settled = await Promise.allSettled(attachments.map(publicAttachment));
+  return settled.flatMap((result, index) => {
+    if (result.status === 'fulfilled') return [result.value];
+    console.error(`Could not sign download URL for attachment ${attachments[index].id}:`, result.reason);
+    return [];
+  });
+}
+
 // Returns the stored object's size, or null when nothing has been uploaded yet.
 export async function objectSize(key: string): Promise<number | null> {
   try {

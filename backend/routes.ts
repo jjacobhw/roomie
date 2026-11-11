@@ -13,7 +13,7 @@ import type {
 } from 'express';
 import type { Pool } from 'pg';
 import { getConversations, getMessages } from './texting';
-import { publicAttachment, type StoredAttachment } from './storage';
+import { publicAttachments, type StoredAttachment } from './storage';
 import { registerChoreRoutes } from './chores';
 import { registerUploadRoutes } from './uploads';
 
@@ -556,11 +556,19 @@ export function registerRoutes(app: Express, pool: Pool): void {
         message: {
           ...message,
           username: request.authUser.username,
-          attachments: await Promise.all(attachments.map(publicAttachment)),
+          attachments: await publicAttachments(attachments),
         },
       });
     } catch (error) {
-      await client.query('ROLLBACK');
+      // If the connection itself died (Neon drops idle ones) ROLLBACK fails too; don't let that
+      // hide the original error, and discard the broken connection instead of reusing it.
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('ROLLBACK failed:', rollbackError);
+        client.release(true);
+        throw error;
+      }
       throw error;
     } finally {
       client.release();
