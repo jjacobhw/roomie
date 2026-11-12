@@ -4,7 +4,7 @@
  * All error messages are logged to the console.
  */
 
-import { publicAttachment, type StoredAttachment } from './storage';
+import { publicAttachments, type StoredAttachment } from './storage';
 
 export type QueryRow = Record<string, unknown>;
 
@@ -220,9 +220,7 @@ export async function getMessages(
       const message = normalizeMessage(row);
       return {
         ...message,
-        attachments: await Promise.all(
-          (message.attachments as StoredAttachment[]).map(publicAttachment)
-        ),
+        attachments: await publicAttachments(message.attachments as StoredAttachment[]),
       };
     })
   );

@@ -26,6 +26,7 @@ export const pool = new Pool({
   // Neon's URL asks for channel binding; node-postgres needs this flag to do it.
   enableChannelBinding: databaseUrl.includes('channel_binding=require'),
   max: 10,
+  keepAlive: true, // stops Neon/Render from silently dropping idle connections
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
 });

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { colors } from './src/constants/colors';
 import { AuthScreen } from './src/screens/AuthScreen';
-import { ChatScreen } from './src/screens/ChatScreen';
 import { HouseholdInfoScreen } from './src/screens/HouseholdInfoScreen';
 import { JoinScreen } from './src/screens/JoinScreen';
+import { MainTabs } from './src/screens/MainTabs';
 import { getMyConversation, signOut } from './src/services/messagingApi';
 import { disablePushNotifications, enablePushNotifications } from './src/services/pushNotifications';
 import { Session } from './src/types/messaging';
@@ -13,7 +14,7 @@ import { Session } from './src/types/messaging';
 //   session      null -> sign in / sign up
 //   inviteCode   null -> create or join a household, otherwise -> the household's chat
 //   showInfo     true -> the household screen (members, rename, leave, log out) over the chat
-export default function App() {
+function AppContent() {
   const [session, setSession] = useState<Session | null>(null);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [householdName, setHouseholdName] = useState<string | null>(null);
@@ -137,7 +138,7 @@ export default function App() {
   }
 
   return (
-    <ChatScreen
+    <MainTabs
       username={session.user.username}
       token={session.token}
       inviteCode={inviteCode}
@@ -145,5 +146,13 @@ export default function App() {
       onOpenInfo={() => setShowInfo(true)}
       onSessionExpired={reset}
     />
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
   );
 }

@@ -119,6 +119,15 @@ export function registerUploadRoutes(app: Express, pool: Pool): void {
 
     const attachmentId = randomUUID();
     const objectKey = `attachments/${attachmentId}`;
+    // Sign first: if storage is misconfigured we fail before leaving an orphaned 'pending' row.
+    let uploadUrl: string;
+    try {
+      uploadUrl = await presignUpload(objectKey, contentType, sizeBytes);
+    } catch (error) {
+      console.error('Could not create upload URL:', error);
+      response.status(502).json({ error: 'File storage is unavailable. Please try again later.' });
+      return;
+    }
     await pool.query(
       `INSERT INTO attachments (id, household_id, uploader_id, object_key, file_name, content_type, size_bytes)
        SELECT $2, h.id, $3, $4, $5, $6, $7
@@ -126,7 +135,6 @@ export function registerUploadRoutes(app: Express, pool: Pool): void {
        WHERE h.invite_code = $1`,
       [inviteCode, attachmentId, request.authUser.id, objectKey, fileName, contentType, sizeBytes]
     );
-    const uploadUrl = await presignUpload(objectKey, contentType, sizeBytes);
 
     response.status(201).json({
       attachmentId,
@@ -162,7 +170,14 @@ export function registerUploadRoutes(app: Express, pool: Pool): void {
       return;
     }
 
-    const storedSize = await objectSize(attachment.objectKey);
+    let storedSize: number | null;
+    try {
+      storedSize = await objectSize(attachment.objectKey);
+    } catch (error) {
+      console.error('Could not check uploaded object:', error);
+      response.status(502).json({ error: 'File storage is unavailable. Please try again later.' });
+      return;
+    }
     if (storedSize === null) {
       response.status(409).json({ error: 'The file has not been uploaded yet.' });
       return;
@@ -207,9 +222,14 @@ export function registerUploadRoutes(app: Express, pool: Pool): void {
       return;
     }
 
-    response.json({
-      attachment: present(attachment),
-      downloadUrl: await presignDownload(attachment.objectKey, attachment.fileName),
-    });
+    let downloadUrl: string;
+    try {
+      downloadUrl = await presignDownload(attachment.objectKey, attachment.fileName);
+    } catch (error) {
+      console.error('Could not create download URL:', error);
+      response.status(502).json({ error: 'File storage is unavailable. Please try again later.' });
+      return;
+    }
+    response.json({ attachment: present(attachment), downloadUrl });
   }));
 }

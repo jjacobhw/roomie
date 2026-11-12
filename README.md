@@ -13,8 +13,8 @@ Send and receive messages between users, with a server-enforced 3-second cooldow
 
 ## Sprint 2
 Implement chores and user ties. Functionality is limited depending on what a user does/doesn't do in their group.
-Users have a complete/incomplete status on their chores/tasks in a roommate group. This is enforced in chores.ts by
-add/update functions to set and update a status for each user.
+Users have a complete/incomplete status on their chores/tasks in a roommate group. The chore routes live in
+`backend/routes.ts` and the board in the app talks to them through `frontend/src/services/httpApi.ts`.
 
 ## Team
 Frontend: Sopeck. Backend: Nikhil and Austin. Database: Jacob and Enoch. Auth: TBA.
@@ -49,37 +49,51 @@ Except signup, login, and health, requests require the bearer token returned
 by signup or login. Passwords are stored as scrypt hashes. This is a prototype:
 use HTTPS and Firebase token verification before using real accounts.
 
-Chore routes require an authenticated member of the household. Chore lists default
-to the signed-in user and a title of `"<username>'s chores"`; set `assignee` to a
-household member's username to assign it to them, or set it to `null` for a
-whole-house list. A custom title can be up to 80 characters, and chore text can
-be up to 200 characters. Successful list/item creation returns `201`, reads and
-updates return `200`, and deletes return `204`.
+The backend exposes these routes. Routes that say "member" are only valid for a
+user who belongs to that conversation; routes with a `:username` parameter must
+match the signed-in account. Chore routes require an authenticated member of the
+household. Chore lists default to the signed-in user and a title of
+`"<username>'s chores"`; set `assignee` to a household member's username to
+assign it to them, or set it to `null` for a whole-house list. A custom title can
+be up to 80 characters, and chore text can be up to 200 characters. Successful
+list/item creation returns `201`, reads and updates return `200`, and deletes
+return `204`.
 
 | Action | Request |
 | --- | --- |
+| Health check | `GET /health` |
 | Create account | `POST /users` with `{"username":"Alex","password":"long-password"}` |
 | Sign in | `POST /sessions` with the same username/password |
+| Sign out | `DELETE /sessions` |
 | List conversations | `GET /conversations` (also `GET /convos`) |
 | List messages | `GET /messages/:inviteCode` |
 | List all users | `GET /users` |
 | List conversation members | `GET /conversations/:inviteCode/users` |
+| Legacy alias for conversation members | `GET /users/:inviteCode` |
 | Send message | `POST /messages/:inviteCode` with `{"messageText":"Hello!"}`, optionally `"attachmentIds":[...]` |
 | Create conversation | `POST /conversations` with optional `{"name":"House chat"}` |
+| Rename conversation | `PATCH /conversations/:inviteCode` with `{"name":"New name"}` (owner only) |
 | Join conversation | `POST /conversations/:inviteCode/members` |
+| Legacy alias for join | `POST /users/:username/:inviteCode` |
 | Delete conversation | `DELETE /conversations/:inviteCode` (owner only) |
 | Leave conversation | `DELETE /conversations/:inviteCode/members` |
+| Remove self from a conversation by username route | `DELETE /conversations/:inviteCode/members/:username` |
+| Remove self from a conversation by legacy path | `DELETE /users/:username/:inviteCode` |
+| Delete own account | `DELETE /users/:username` (must match signed-in user) |
 | Request upload URL | `POST /conversations/:inviteCode/attachments` with `{"fileName":"pic.png","contentType":"image/png","sizeBytes":12345}` |
 | Mark upload complete | `POST /attachments/:attachmentId/complete` (uploader only) |
 | Get download URL | `GET /attachments/:attachmentId` (household members, complete files only) |
-| Delete own account | `DELETE /users/:username` (must match signed-in user) |
-| Sign out | `DELETE /sessions` |
 | List household chores | `GET /conversations/:inviteCode/chores` |
 | Create chore list | `POST /conversations/:inviteCode/chores` with optional `{"title":"Kitchen","assignee":"Alex"}` |
+| Delete chore list | `DELETE /chores/:listId` |
 | Add chore to list | `POST /chores/:listId/items` with `{"text":"Take out the trash"}` |
 | Mark chore complete/incomplete | `PATCH /chores/items/:itemId` with `{"isDone":true}` or `{"isDone":false}` |
 | Delete chore | `DELETE /chores/items/:itemId` |
-| Delete chore list | `DELETE /chores/:listId` |
+
+The upload flow is a signed-URL workflow: the server creates a pending
+attachment row, the client `PUT`s raw bytes to the returned `uploadUrl`, and then
+calls `POST /attachments/:attachmentId/complete` to finalize it. The server never
+receives the uploaded file bytes directly.
 
 For example, after signing in, send the token as `Authorization: Bearer <token>`.
 The backend derives the message author from that session; clients cannot choose

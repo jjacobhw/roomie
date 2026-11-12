@@ -113,12 +113,12 @@ export const ATTACHMENT_CONTENT_TYPES = [
 
 // Pictures the chat draws inline. HEIC is left out because most browsers can't display it.
 export function isPreviewableImage(contentType: string): boolean {
-  return ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(contentType.toLowerCase());
+  return ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].indexOf(contentType.toLowerCase()) !== -1;
 }
 
 // Throws the same errors the server would, before any network call is made.
 export function checkAttachment(file: PickedFile): void {
-  if (!ATTACHMENT_CONTENT_TYPES.includes(file.mimeType.toLowerCase())) {
+  if (ATTACHMENT_CONTENT_TYPES.indexOf(file.mimeType.toLowerCase()) === -1) {
     throw new MessagingError('UNSUPPORTED_FILE', 'That file type can’t be sent. Use an image, PDF, or text file.');
   }
   if (file.sizeBytes < 1 || file.sizeBytes > ATTACHMENT_MAX_BYTES) {

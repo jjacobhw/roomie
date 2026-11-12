@@ -82,8 +82,12 @@ export function Composer({ onSend, sending, onAttach, uploading }: Props) {
     if (picked.canceled || picked.assets.length === 0) return;
 
     const asset = picked.assets[0];
-    const sizeBytes = asset.fileSize ?? (await (await fetch(asset.uri)).blob()).size;
-    const mimeType = asset.mimeType ?? 'image/jpeg';
+    // Measure the bytes that will actually be uploaded. With quality < 1 the picker re-encodes the
+    // photo, so asset.fileSize can describe the original and not match, and the signed upload
+    // (which pins Content-Length) would then be rejected.
+    const blob = await (await fetch(asset.uri)).blob();
+    const sizeBytes = blob.size;
+    const mimeType = blob.type || asset.mimeType || 'image/jpeg';
     const name = asset.fileName ?? `photo-${Date.now()}.${mimeType.split('/')[1] ?? 'jpg'}`;
     await upload({ uri: asset.uri, name, mimeType, sizeBytes });
   }
