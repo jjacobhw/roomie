@@ -26,6 +26,12 @@
     "plugins": [
       "expo-status-bar",
       "expo-notifications"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "71d8ef9f-cfb9-489a-97ed-b5396e785eed"
+      }
+    },
+    "owner": "ezhang50"
   }
 }
