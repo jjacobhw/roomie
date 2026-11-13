@@ -91,7 +91,7 @@ function verifyPassword(password: string, storedHash: string): Promise<boolean> 
   });
 }
 
-function tokenHash(token: string): string {
+export function tokenHash(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
@@ -770,6 +770,136 @@ export function registerRoutes(app: Express, pool: Pool): void {
     }
     await deleteUserAccount(pool, request.authUser);
     response.status(204).end();
+  }));
+
+  // get all household expenses
+  app.get('/conversations/:inviteCode/expenses', authenticated(pool, async (request, response) => {
+    const inviteCode = routeParam(request, 'inviteCode');
+    const access = await getConversationAccess(pool, inviteCode, request.authUser.id);
+    if (access !== 'member') {
+      response.status(access === 'not_found' ? 404 : 403).json({
+        error: access === 'not_found' ? 'Conversation not found.' : 'User is not a member of this conversation.',
+      });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT e.id,
+              e.title,
+              e.amount_cents AS "amountCents",
+              e.created_at AS "createdAt",
+              u.display_name AS "paidByUsername",
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'userId', es.user_id,
+                    'username', su.display_name,
+                    'amountCents', es.amount_cents,
+                    'isPaid', es.is_paid
+                  )
+                ) FILTER (WHERE es.id IS NOT NULL),
+                '[]'
+              ) AS splits
+       FROM expenses e
+       JOIN households h ON h.id = e.household_id
+       JOIN users u ON u.id = e.paid_by
+       LEFT JOIN expense_splits es ON es.expense_id = e.id
+       LEFT JOIN users su ON su.id = es.user_id
+       WHERE h.invite_code = $1
+       GROUP BY e.id, u.display_name
+       ORDER BY e.created_at DESC`,
+      [inviteCode]
+    );
+
+    response.json({ expenses: result.rows });
+  }));
+
+  // post a new expense and its splits
+  app.post('/conversations/:inviteCode/expenses', authenticated(pool, async (request, response) => {
+    const inviteCode = routeParam(request, 'inviteCode');
+    const body: unknown = request.body;
+
+    if (
+      !isRecord(body) ||
+      typeof body.title !== 'string' ||
+      typeof body.amountCents !== 'number' ||
+      !Array.isArray(body.splits)
+    ) {
+      response.status(400).json({ error: 'Invalid expense payload.' });
+      return;
+    }
+
+    const title = body.title.trim();
+    if (title.length < 1 || title.length > 100 || body.amountCents <= 0) {
+      response.status(400).json({ error: 'Title and a positive amount are required.' });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const householdRes = await client.query<{ id: string }>(
+        `SELECT h.id
+         FROM households h
+         JOIN household_members hm ON hm.household_id = h.id
+         WHERE h.invite_code = $1 AND hm.user_id = $2`,
+        [inviteCode, request.authUser.id]
+      );
+
+      if (householdRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        response.status(403).json({ error: 'User is not a member of this conversation.' });
+        return;
+      }
+
+      const householdId = householdRes.rows[0].id;
+
+      const expenseRes = await client.query<{ id: string; createdAt: Date }>(
+        `INSERT INTO expenses (household_id, paid_by, title, amount_cents)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, created_at AS "createdAt"`,
+        [householdId, request.authUser.id, title, Math.round(body.amountCents)]
+      );
+      const expenseId = expenseRes.rows[0].id;
+
+      for (const split of body.splits) {
+        if (
+          !isRecord(split) ||
+          typeof split.userId !== 'string' ||
+          !UUID_PATTERN.test(split.userId) ||
+          typeof split.amountCents !== 'number'
+        ) {
+          throw new Error('INVALID_SPLIT_DATA');
+        }
+        await client.query(
+          `INSERT INTO expense_splits (expense_id, user_id, amount_cents, is_paid)
+           VALUES ($1, $2, $3, $4)`,
+          [expenseId, split.userId, Math.round(split.amountCents), split.userId === request.authUser.id]
+        );
+      }
+
+      await client.query('COMMIT');
+      response.status(201).json({
+        expense: {
+          id: expenseId,
+          title,
+          amountCents: Math.round(body.amountCents),
+          paidByUsername: request.authUser.username,
+          createdAt: expenseRes.rows[0].createdAt,
+          splits: body.splits,
+        },
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (error instanceof Error && error.message === 'INVALID_SPLIT_DATA') {
+        response.status(400).json({ error: 'Invalid split user IDs or amounts.' });
+        return;
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }));
 
   registerChoreRoutes(app, pool);
