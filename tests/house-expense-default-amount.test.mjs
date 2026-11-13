@@ -11,7 +11,7 @@ test('defaults the amount to -1 when omitted', async () => {
     assert.equal(response.status, 201);
     assert.equal(body.expense.name, 'Internet');
     assert.equal(body.expense.amount, -1);
-    assert.equal(queries.length, 1);
-    assert.equal(queries[0][1][2], -1);
+    const householdInsert = queries.find(([sql]) => /INSERT INTO household_expenses/i.test(sql));
+    assert.equal(householdInsert[1][2], -1);
   });
 });

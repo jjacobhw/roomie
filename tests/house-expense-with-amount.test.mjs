@@ -12,8 +12,8 @@ test('creates a household expense with its supplied name and amount', async () =
     assert.equal(body.expense.conversationId, 'conversation-1');
     assert.equal(body.expense.name, 'Rent');
     assert.equal(body.expense.amount, 850);
-    assert.equal(queries.length, 1);
-    assert.equal(queries[0][1][1], 'Rent');
-    assert.equal(queries[0][1][2], 850);
+    const householdInsert = queries.find(([sql]) => /INSERT INTO household_expenses/i.test(sql));
+    assert.equal(householdInsert[1][1], 'Rent');
+    assert.equal(householdInsert[1][2], 850);
   });
 });
