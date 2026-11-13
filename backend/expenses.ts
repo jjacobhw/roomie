@@ -38,6 +38,7 @@ function pathValue(value: string | string[] | undefined): string {
 
 class ExpenseInputError extends Error {}
 
+// Normalization and validation functions
 function normalizeExpenseName(name: string): string {
   const trimmed = name.trim();
   if (trimmed.length === 0) {
@@ -45,7 +46,6 @@ function normalizeExpenseName(name: string): string {
   }
   return trimmed;
 }
-
 function normalizeExpenseAmount(amount: number | string | undefined): number {
   const parsed = typeof amount === 'number'
     ? amount
@@ -58,7 +58,6 @@ function normalizeExpenseAmount(amount: number | string | undefined): number {
   }
   return parsed;
 }
-
 function safeExpenseError(error: unknown, defaultMessage: string): { status: number; message: string } {
   if (error instanceof ExpenseInputError) {
     return { status: 400, message: error.message };
@@ -67,6 +66,7 @@ function safeExpenseError(error: unknown, defaultMessage: string): { status: num
   return { status: 500, message: defaultMessage };
 }
 
+// Builds a new expense record with the current timestamp.
 function buildExpenseRecord(conversationId: string, name: string, amount: number): HouseExpense {
   const now = new Date();
   return {
@@ -257,6 +257,7 @@ export async function updateHouseExpense(
   return nextExpense;
 }
 
+// Updates a household expense's paid status.
 export async function updateHouseExpensePaid(
   pool: Pool,
   id: string,
@@ -301,6 +302,7 @@ export async function updateRoommateExpense(
   return nextExpense;
 }
 
+// Updates a roommate expense's paid status.
 export async function updateRoommateExpensePaid(
   pool: Pool,
   id: string,
@@ -310,7 +312,7 @@ export async function updateRoommateExpensePaid(
 }
 
 /**
- * Deleates a household expense and its associated roommate expenses.
+ * Deletes a household expense and its associated roommate expenses.
  * @param pool The database pool.
  * @param id ID of the expense to delete.
  */
@@ -329,6 +331,7 @@ export async function deleteHouseExpense(pool: Pool, id: string): Promise<void> 
   }
 }
 
+// Registers the expense-related routes with the Express app.
 export function registerExpenseRoutes(app: Express, pool: Pool): void {
   app.get('/houseexpenses', async (_request: Request, response: Response) => {
     const expenses = await getHouseExpenses(pool);
