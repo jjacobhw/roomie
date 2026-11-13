@@ -6,12 +6,28 @@ import { registerExpenseRoutes } from '../backend/expenses.ts';
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
 const express = require('express');
 
-export async function withExpenseApi(run, { rows = [] } = {}) {
+export async function withExpenseApi(
+  run,
+  {
+    rows = [],
+    householdMembers = [{ roommateId: 'owner-1', role: 'owner' }],
+  } = {}
+) {
   const queries = [];
+  const query = async (...args) => {
+    queries.push(args);
+    if (/SELECT hm\.user_id AS "roommateId"/i.test(args[0])) {
+      return { rows: householdMembers, rowCount: householdMembers.length };
+    }
+    return { rows, rowCount: 1 };
+  };
   const pool = {
-    async query(...args) {
-      queries.push(args);
-      return { rows, rowCount: 1 };
+    query,
+    async connect() {
+      return {
+        query,
+        release() {},
+      };
     },
   };
   const app = express();

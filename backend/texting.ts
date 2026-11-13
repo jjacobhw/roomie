@@ -106,6 +106,7 @@ export async function getConversations(
 }
 
 /**
+ * POST /messages/:inviteCode
  * Create a new message in the specified conversation.
  * @param pgClient The PostgreSQL client to use for the query.
  * @param inviteCode The invite code of the conversation.

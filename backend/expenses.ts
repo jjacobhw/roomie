@@ -36,10 +36,12 @@ function pathValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? '' : value ?? '';
 }
 
+class ExpenseInputError extends Error {}
+
 function normalizeExpenseName(name: string): string {
   const trimmed = name.trim();
   if (trimmed.length === 0) {
-    throw new Error('Expense name is required.');
+    throw new ExpenseInputError('Expense name is required.');
   }
   return trimmed;
 }
@@ -52,13 +54,13 @@ function normalizeExpenseAmount(amount: number | string | undefined): number {
       : Number.NaN;
 
   if (!Number.isFinite(parsed)) {
-    throw new Error('Expense amount must be a valid number.');
+    throw new ExpenseInputError('Expense amount must be a valid number.');
   }
   return parsed;
 }
 
 function safeExpenseError(error: unknown, defaultMessage: string): { status: number; message: string } {
-  if (error instanceof Error && error.message) {
+  if (error instanceof ExpenseInputError) {
     return { status: 400, message: error.message };
   }
   console.error(defaultMessage, error);
@@ -78,6 +80,11 @@ function buildExpenseRecord(conversationId: string, name: string, amount: number
   };
 }
 
+/**
+ * Retrieves all household expenses.
+ * @param pool The database pool.
+ * @returns The house expenses.
+ */
 export async function getHouseExpenses(pool: Pool): Promise<HouseExpense[]> {
   try {
     const result = await pool.query<HouseExpense>(
@@ -96,6 +103,12 @@ export async function getHouseExpenses(pool: Pool): Promise<HouseExpense[]> {
   }
 }
 
+/**
+ * Retrieves all expenses for a specific roommate.
+ * @param pool The database pool.
+ * @param roommateId The roommate to retrieve expenses for.
+ * @returns The roommate's expenses.
+ */
 export async function getRoommateExpenses(pool: Pool, roommateId: string): Promise<RoommateExpense[]> {
   try {
     const result = await pool.query<RoommateExpense>(
@@ -116,6 +129,14 @@ export async function getRoommateExpenses(pool: Pool, roommateId: string): Promi
   }
 }
 
+/**
+ * Creates a new household expense and splits it among roommates.
+ * @param pool The database pool.
+ * @param conversationId The conversation the expense refers to.
+ * @param name The name of the expense.
+ * @param amount The amount needed to pay the expense.
+ * @returns The created expense.
+ */
 export async function createHouseExpense(
   pool: Pool,
   conversationId: string,
@@ -126,8 +147,26 @@ export async function createHouseExpense(
   const normalizedAmount = normalizeExpenseAmount(amount);
   const expense = buildExpenseRecord(conversationId, normalizedName, normalizedAmount);
 
+  const client = await pool.connect();
+  let transactionStarted = false;
   try {
-    await pool.query(
+    await client.query('BEGIN');
+    transactionStarted = true;
+    const members = await client.query<{ roommateId: string; role: string }>(
+      `SELECT hm.user_id AS "roommateId", hm.role
+       FROM households h
+       JOIN household_members hm ON hm.household_id = h.id
+       WHERE upper(h.invite_code) = upper($1)
+       ORDER BY hm.user_id
+       FOR UPDATE OF h, hm`,
+      [conversationId]
+    );
+    const owner = members.rows.find((member) => member.role === 'owner');
+    if (!owner) {
+      throw new Error('Household owner not found.');
+    }
+
+    await client.query(
       `INSERT INTO household_expenses (id, name, amount, due_date, created_at, paid, conversation_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
@@ -140,13 +179,55 @@ export async function createHouseExpense(
         expense.conversationId,
       ]
     );
+    // Rounding logic: Convert the normalized amount to cents, round it, and then split it among roommates. The owner gets any remainder.
+    const totalCents = Math.round(normalizedAmount * 100);
+    if (!Number.isSafeInteger(totalCents)) {
+      throw new ExpenseInputError('Expense amount is too large to split into cents.');
+    }
+    const centsPerRoommate = Math.trunc(totalCents / members.rows.length);
+    const ownerCents = totalCents - centsPerRoommate * (members.rows.length - 1);
+    for (const member of members.rows) {
+      const cents = member.roommateId === owner.roommateId ? ownerCents : centsPerRoommate;
+      await client.query(
+        `INSERT INTO roommate_expenses (id, name, amount, due_date, created_at, paid, roommate_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          expense.id,
+          expense.name,
+          cents / 100,
+          expense.dueDate,
+          expense.createdAt,
+          expense.paid,
+          member.roommateId,
+        ]
+      );
+    }
+    await client.query('COMMIT');
+    transactionStarted = false;
   } catch (error) {
+    if (transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Unable to roll back household expense creation.', rollbackError);
+      }
+    }
     console.error('Unable to create household expense.', error);
+    throw error;
+  } finally {
+    client.release();
   }
 
   return expense;
 }
 
+/**
+ * Updates a household expense.
+ * @param pool The database pool.
+ * @param id The ID of the expense to update.
+ * @param expense Expense to update
+ * @returns The updated expense.
+ */
 export async function updateHouseExpense(
   pool: Pool,
   id: string,
@@ -184,6 +265,13 @@ export async function updateHouseExpensePaid(
   return updateHouseExpense(pool, id, { paid });
 }
 
+/**
+ * Updates a roommate expense.
+ * @param pool The database pool.
+ * @param id The ID of the expense to update.
+ * @param expense Expense to update
+ * @returns The updated expense.
+ */
 export async function updateRoommateExpense(
   pool: Pool,
   id: string,
@@ -221,6 +309,11 @@ export async function updateRoommateExpensePaid(
   return updateRoommateExpense(pool, id, { paid });
 }
 
+/**
+ * Deleates a household expense and its associated roommate expenses.
+ * @param pool The database pool.
+ * @param id ID of the expense to delete.
+ */
 export async function deleteHouseExpense(pool: Pool, id: string): Promise<void> {
   try {
     await pool.query(
