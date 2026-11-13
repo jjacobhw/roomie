@@ -6,12 +6,12 @@ import { registerExpenseRoutes } from '../backend/expenses.ts';
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
 const express = require('express');
 
-export async function withExpenseApi(run) {
+export async function withExpenseApi(run, { rows = [] } = {}) {
   const queries = [];
   const pool = {
     async query(...args) {
       queries.push(args);
-      return { rows: [], rowCount: 1 };
+      return { rows, rowCount: 1 };
     },
   };
   const app = express();
