@@ -130,6 +130,27 @@ export async function getRoommateExpenses(pool: Pool, roommateId: string): Promi
 }
 
 /**
+ * Divides amountCents by the number of members; leftover cents added one at a time to each member until no leftovers left.
+ * Example: $10.04 split among 3. each roommate owes $3.34, and 2 cents leftover. those 2c split among first 2 roommates.
+ * so roommate 1 and roommate 2 $3.35, roommate 3 $3.34.
+ */
+export function splitEvenlyCents(
+  amountCents: number,
+  memberIds: string[]
+): Array<{ userId: string; amountCents: number }> {
+  if (memberIds.length === 0) {
+    return [];
+  }
+  const baseShare = Math.floor(amountCents / memberIds.length);
+  const remainder = amountCents % memberIds.length;
+
+  return memberIds.map((userId, index) => ({
+    userId,
+    amountCents: baseShare + (index < remainder ? 1 : 0),
+  }));
+}
+
+/**
  * Creates a new household expense and splits it among roommates.
  * @param pool The database pool.
  * @param conversationId The conversation the expense refers to.
@@ -161,9 +182,8 @@ export async function createHouseExpense(
        FOR UPDATE OF h, hm`,
       [conversationId]
     );
-    const owner = members.rows.find((member) => member.role === 'owner');
-    if (!owner) {
-      throw new Error('Household owner not found.');
+    if (members.rows.length === 0) {
+      throw new ExpenseInputError('Household not found or has no members.');
     }
 
     await client.query(
@@ -184,21 +204,23 @@ export async function createHouseExpense(
     if (!Number.isSafeInteger(totalCents)) {
       throw new ExpenseInputError('Expense amount is too large to split into cents.');
     }
-    const centsPerRoommate = Math.trunc(totalCents / members.rows.length);
-    const ownerCents = totalCents - centsPerRoommate * (members.rows.length - 1);
-    for (const member of members.rows) {
-      const cents = member.roommateId === owner.roommateId ? ownerCents : centsPerRoommate;
+    const splits = splitEvenlyCents(
+      totalCents,
+      members.rows.map((member) => member.roommateId)
+    );
+    for (const split of splits) {
+      // SCHEMA NEEDS TO BE PUT IN HERE: verify `roommate_expenses` table and columns
       await client.query(
         `INSERT INTO roommate_expenses (id, name, amount, due_date, created_at, paid, roommate_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           expense.id,
           expense.name,
-          cents / 100,
+          split.amountCents / 100,
           expense.dueDate,
           expense.createdAt,
           expense.paid,
-          member.roommateId,
+          split.userId,
         ]
       );
     }

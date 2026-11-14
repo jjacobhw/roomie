@@ -1,3 +1,6 @@
+
+
+
 import {
   randomBytes,
   scrypt,
@@ -16,6 +19,7 @@ import { getConversations, getMessages } from './texting';
 import { publicAttachments, type StoredAttachment } from './storage';
 import { registerChoreRoutes } from './chores';
 import { registerUploadRoutes } from './uploads';
+import { registerExpenseRoutes } from './expenses';
 
 const SESSION_LIFETIME_DAYS = 30;
 const MESSAGE_COOLDOWN_MS = 3000;
@@ -903,4 +907,5 @@ export function registerRoutes(app: Express, pool: Pool): void {
   }));
 
   registerChoreRoutes(app, pool);
+  registerExpenseRoutes(app, pool);
 }
