@@ -4,6 +4,7 @@
  * Provides functions to manage user accounts, conversations, and messages in PostgreSQL.
  * 
  * All error messages are logged to the console.
+ * Austin LaMarche
  */
 
 import { publicAttachments, type StoredAttachment } from './storage';

@@ -4,7 +4,9 @@
  * Provides functions to manage chores, chore lists, chore items, and chore-related API routes in PostgreSQL.
  * 
  * All error messages are logged to the console.
+ * Austin LaMarche
  */
+
 import type { Express, Response } from 'express';
 import type { Pool } from 'pg';
 import {

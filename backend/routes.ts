@@ -4,7 +4,9 @@
  * Provides functions to manage user authentication, conversations, messages, and related API routes in PostgreSQL.
  * 
  * All error messages are logged to the console.
+ * Austin LaMarche
  */
+
 import {
   randomBytes,
   scrypt,

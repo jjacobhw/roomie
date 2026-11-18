@@ -1,3 +1,13 @@
+/**
+ * Roomie Server
+ * 
+ * This is the main server file for the Roomie application. 
+ * It sets up the Express server, configures middleware, and registers API routes for managing user authentication, conversations, messages, chores, expenses, and related functionalities in PostgreSQL.
+ * 
+ * All error messages are logged to the console.
+ * Austin LaMarche
+ */
+
 import cors from 'cors';
 import express, { type ErrorRequestHandler } from 'express';
 import { pool } from './db';

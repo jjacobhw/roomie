@@ -4,6 +4,7 @@
  * Provides functions to manage household expenses, roommate expenses, and expense-related API routes in PostgreSQL.
  * 
  * All error messages are logged to the console.
+ * Austin LaMarche
  */
 
 import { randomUUID } from 'node:crypto';
