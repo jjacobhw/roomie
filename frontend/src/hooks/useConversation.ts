@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getMessages, sendMessage, uploadAttachment } from '../services/messagingApi';
+import { getMessages, markAlertSeen, sendMessage, uploadAttachment } from '../services/messagingApi';
 import { Message, MessagingError, PickedFile, UploadedAttachment } from '../types/messaging';
 import { mergeMessages } from '../utils/messages';
 
@@ -62,10 +62,10 @@ export function useConversation(token: string, inviteCode: string, onSessionExpi
   }, [token, inviteCode]);
 
   const send = useCallback(
-    async (messageText: string, attachmentIds: string[] = []): Promise<SendResult> => {
+    async (messageText: string, attachmentIds: string[] = [], isAlert = false): Promise<SendResult> => {
       setSending(true);
       try {
-        const sent = await sendMessage(token, inviteCode, messageText, attachmentIds);
+        const sent = await sendMessage(token, inviteCode, messageText, attachmentIds, isAlert);
         // Show it straight away instead of waiting for the next poll.
         setMessages((current) => mergeMessages(current, [sent]));
         return { ok: true };
@@ -80,6 +80,21 @@ export function useConversation(token: string, inviteCode: string, onSessionExpi
       }
     },
     [token, inviteCode],
+  );
+
+  // Mark an alert as seen by me. Updates the list straight away; the next poll confirms it.
+  const acknowledge = useCallback(
+    async (alertId: string): Promise<{ ok: boolean }> => {
+      try {
+        const seenBy = await markAlertSeen(token, alertId);
+        setMessages((current) => current.map((m) => (m.id === alertId ? { ...m, seenBy } : m)));
+        return { ok: true };
+      } catch (e) {
+        if (e instanceof MessagingError && e.code === 'UNAUTHENTICATED') expiredRef.current();
+        return { ok: false };
+      }
+    },
+    [token],
   );
 
   const upload = useCallback(
@@ -101,5 +116,5 @@ export function useConversation(token: string, inviteCode: string, onSessionExpi
     [token, inviteCode],
   );
 
-  return { messages, loading, loadError, sending, send, uploading, upload };
+  return { messages, loading, loadError, sending, send, uploading, upload, acknowledge };
 }

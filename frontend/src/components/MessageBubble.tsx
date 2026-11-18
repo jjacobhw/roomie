@@ -28,6 +28,7 @@ export function MessageBubble({ message, isMine }: Props) {
       )}
       <View style={[styles.content, isMine ? styles.myContent : styles.theirContent]}>
         {!isMine && <Text style={styles.senderName}>{message.username}</Text>}
+        {message.isAlert && <Text style={styles.alertTag}>🔔 ALERT</Text>}
         {message.attachments.map((attachment) =>
           isPreviewableImage(attachment.contentType) ? (
             <Pressable
@@ -62,8 +63,8 @@ export function MessageBubble({ message, isMine }: Props) {
           ),
         )}
         {message.messageText.length > 0 && (
-          <View style={[styles.bubble, isMine ? styles.myBubble : styles.theirBubble]}>
-            <Text style={[styles.text, isMine && styles.myText]}>{message.messageText}</Text>
+          <View style={[styles.bubble, isMine ? styles.myBubble : styles.theirBubble, message.isAlert && styles.alertBubble]}>
+            <Text style={[styles.text, isMine && styles.myText, message.isAlert && styles.alertBubbleText]}>{message.messageText}</Text>
           </View>
         )}
         <Text style={[styles.timestamp, isMine && styles.myTimestamp]}>
@@ -147,6 +148,22 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 5,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  alertTag: {
+    color: colors.alertText,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 4,
+    marginLeft: 3,
+  },
+  alertBubble: {
+    backgroundColor: colors.alertBackground,
+    borderWidth: 1,
+    borderColor: colors.alertBorder,
+  },
+  alertBubbleText: {
+    color: colors.alertText,
   },
   text: {
     color: colors.text,

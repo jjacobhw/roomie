@@ -7,7 +7,7 @@ import { colors } from '../constants/colors';
 import { ATTACHMENT_CONTENT_TYPES, PickedFile, isPreviewableImage } from '../types/messaging';
 
 type Props = {
-  onSend: (messageText: string, attachmentIds: string[]) => Promise<SendResult>;
+  onSend: (messageText: string, attachmentIds: string[], isAlert: boolean) => Promise<SendResult>;
   sending: boolean;
   onAttach: (file: PickedFile) => Promise<UploadResult>;
   uploading: boolean;
@@ -23,14 +23,17 @@ export function Composer({ onSend, sending, onAttach, uploading }: Props) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [attached, setAttached] = useState<Attached | null>(null);
+  // When on, the next message is posted as an alert and pinned at the top of the chat.
+  const [asAlert, setAsAlert] = useState(false);
 
   const canSend = (draft.trim().length > 0 || attached !== null) && !sending && !uploading;
 
   async function handleSend() {
     if (!canSend) return;
-    const result = await onSend(draft, attached ? [attached.id] : []);
+    const result = await onSend(draft, attached ? [attached.id] : [], asAlert);
     if (result.ok) {
       setDraft('');
+      setAsAlert(false);
       setAttached(null);
       setError(null);
     } else {
@@ -124,12 +127,21 @@ export function Composer({ onSend, sending, onAttach, uploading }: Props) {
             setError(null);
           }}
           onSubmitEditing={handleSend}
-          placeholder="Write a message..."
+          placeholder={asAlert ? 'Write an alert...' : 'Write a message...'}
           placeholderTextColor={colors.textFaint}
           returnKeyType="send"
           style={styles.input}
           value={draft}
         />
+        <Pressable
+          accessibilityLabel={asAlert ? 'Posting as alert (tap to turn off)' : 'Post as alert'}
+          accessibilityRole="button"
+          accessibilityState={{ selected: asAlert }}
+          onPress={() => setAsAlert((on) => !on)}
+          style={[styles.attachButton, asAlert && styles.alertButtonOn]}
+        >
+          <Text style={styles.attachButtonText}>🔔</Text>
+        </Pressable>
         <Pressable
           accessibilityLabel="Attach photo"
           accessibilityRole="button"
@@ -188,6 +200,12 @@ const styles = StyleSheet.create({
   },
   attachButtonText: {
     fontSize: 20,
+  },
+  alertButtonOn: {
+    borderRadius: 19,
+    backgroundColor: colors.alertBackground,
+    borderWidth: 1,
+    borderColor: colors.alertBorder,
   },
   input: {
     flex: 1,

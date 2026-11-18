@@ -75,6 +75,8 @@ houses.set('DEMO12', {
       messageText: 'Welcome to the crib chat!',
       timestamp: new Date().toISOString(),
       attachments: [],
+      isAlert: false,
+      seenBy: [],
     },
   ],
 });
@@ -245,6 +247,7 @@ export async function sendMessage(
   inviteCode: string,
   messageText: string,
   attachmentIds: string[] = [],
+  isAlert = false,
 ): Promise<Message> {
   await delay();
   const account = accountFor(token);
@@ -276,11 +279,27 @@ export async function sendMessage(
     messageText: text,
     timestamp: new Date(now).toISOString(),
     attachments: attachments.map(({ owner, ...attachment }) => attachment),
+    isAlert,
+    seenBy: isAlert ? [account.username] : [],
   };
   attachmentIds.forEach((id) => uploads.delete(id));
   house.messages.push(message);
   lastSentAt.set(key, now);
   return message;
+}
+
+// Like the server: only alerts can be acknowledged, only by members, and twice is harmless.
+export async function markAlertSeen(token: string, alertId: string): Promise<string[]> {
+  await delay();
+  const account = accountFor(token);
+  for (const house of houses.values()) {
+    const alert = house.messages.find((m) => m.id === alertId && m.isAlert);
+    if (!alert) continue;
+    memberHouse(account, house.inviteCode);
+    if (!alert.seenBy.includes(account.username)) alert.seenBy = [...alert.seenBy, account.username];
+    return [...alert.seenBy];
+  }
+  throw new MessagingError('CONVERSATION_NOT_FOUND', 'Alert not found.');
 }
 
 // Pretends to upload: same checks as the real flow, but nothing is stored.
