@@ -4,6 +4,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { SendResult, UploadResult } from '../hooks/useConversation';
 import { colors } from '../constants/colors';
+import { alertToggleAfterSend } from '../utils/messages';
 import { ATTACHMENT_CONTENT_TYPES, PickedFile, isPreviewableImage } from '../types/messaging';
 
 type Props = {
@@ -33,11 +34,12 @@ export function Composer({ onSend, sending, onAttach, uploading }: Props) {
     const result = await onSend(draft, attached ? [attached.id] : [], asAlert);
     if (result.ok) {
       setDraft('');
-      setAsAlert(false);
+      setAsAlert(alertToggleAfterSend(asAlert, true));
       setAttached(null);
       setError(null);
     } else {
       // Keep the draft so the user can just press send again.
+      setAsAlert(alertToggleAfterSend(asAlert, false));
       setError(result.error);
     }
   }
