@@ -38,7 +38,12 @@ function pathValue(value: string | string[] | undefined): string {
 
 class ExpenseInputError extends Error {}
 
-// Normalization and validation functions
+/**
+ * Used by POST /expenses/household/:conversationId/:name/:amount route to validate and normalize input values.
+ * Normalizes the name of an expense.
+ * @param name The name of the expense to normalize
+ * @returns The normalized expense name
+ */
 function normalizeExpenseName(name: string): string {
   const trimmed = name.trim();
   if (trimmed.length === 0) {
@@ -46,6 +51,13 @@ function normalizeExpenseName(name: string): string {
   }
   return trimmed;
 }
+
+/**
+ * Used by createHouseExpense and createRoommateExpense to validate and normalize input values.
+ * Normalizes the amount of an expense.
+ * @param amount The amount of the expense to normalize
+ * @returns The normalized expense amount
+ */
 function normalizeExpenseAmount(amount: number | string | undefined): number {
   const parsed = typeof amount === 'number'
     ? amount
@@ -66,7 +78,14 @@ function safeExpenseError(error: unknown, defaultMessage: string): { status: num
   return { status: 500, message: defaultMessage };
 }
 
-// Builds a new expense record with the current timestamp.
+/** 
+ * Used by POST /expenses/household/:conversationId/:name/:amount route to build a new expense record.
+ * Builds a new expense record with the current timestamp.
+ * @param conversationId The conversation ID the expense is associated with.
+ * @param name The name of the expense.
+ * @param amount The amount of the expense.
+ * @returns A new HouseExpense object.
+ */
 function buildExpenseRecord(conversationId: string, name: string, amount: number): HouseExpense {
   const now = new Date();
   return {
@@ -81,6 +100,7 @@ function buildExpenseRecord(conversationId: string, name: string, amount: number
 }
 
 /**
+ * GET /expenses/household
  * Retrieves all household expenses.
  * @param pool The database pool.
  * @returns The house expenses.
@@ -104,6 +124,7 @@ export async function getHouseExpenses(pool: Pool): Promise<HouseExpense[]> {
 }
 
 /**
+ * GET /expenses/roommate/:roommateId
  * Retrieves all expenses for a specific roommate.
  * @param pool The database pool.
  * @param roommateId The roommate to retrieve expenses for.
@@ -130,9 +151,11 @@ export async function getRoommateExpenses(pool: Pool, roommateId: string): Promi
 }
 
 /**
+ * Used by createHouseExpense to split an amount evenly among members.
  * Divides amountCents by the number of members; leftover cents added one at a time to each member until no leftovers left.
- * Example: $10.04 split among 3. each roommate owes $3.34, and 2 cents leftover. those 2c split among first 2 roommates.
- * so roommate 1 and roommate 2 $3.35, roommate 3 $3.34.
+ * @param amountCents The total amount in cents to split.
+ * @param memberIds The IDs of the members to split the amount among.
+ * @returns An array of objects containing userId and their corresponding amountCents.
  */
 export function splitEvenlyCents(
   amountCents: number,
@@ -151,6 +174,7 @@ export function splitEvenlyCents(
 }
 
 /**
+ * POST /expenses/household/:conversationId/:name/:amount
  * Creates a new household expense and splits it among roommates.
  * @param pool The database pool.
  * @param conversationId The conversation the expense refers to.
@@ -199,7 +223,6 @@ export async function createHouseExpense(
         expense.conversationId,
       ]
     );
-    // Rounding logic: Convert the normalized amount to cents, round it, and then split it among roommates. The owner gets any remainder.
     const totalCents = Math.round(normalizedAmount * 100);
     if (!Number.isSafeInteger(totalCents)) {
       throw new ExpenseInputError('Expense amount is too large to split into cents.');
@@ -209,7 +232,6 @@ export async function createHouseExpense(
       members.rows.map((member) => member.roommateId)
     );
     for (const split of splits) {
-      // SCHEMA NEEDS TO BE PUT IN HERE: verify `roommate_expenses` table and columns
       await client.query(
         `INSERT INTO roommate_expenses (id, name, amount, due_date, created_at, paid, roommate_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -244,6 +266,7 @@ export async function createHouseExpense(
 }
 
 /**
+ * PATCH /expenses/household/:id
  * Updates a household expense.
  * @param pool The database pool.
  * @param id The ID of the expense to update.
@@ -279,7 +302,14 @@ export async function updateHouseExpense(
   return nextExpense;
 }
 
-// Updates a household expense's paid status.
+/**
+ * PATCH /expenses/household/:id
+ * Updates a household expense's paid status.
+ * @param pool The database pool.
+ * @param id The ID of the expense to update.
+ * @param paid The new paid status.
+ * @returns The updated expense.
+ */
 export async function updateHouseExpensePaid(
   pool: Pool,
   id: string,
@@ -324,7 +354,14 @@ export async function updateRoommateExpense(
   return nextExpense;
 }
 
-// Updates a roommate expense's paid status.
+/**
+ * PATCH /expenses/roommate/:id
+ * Updates a roommate expense's paid status.
+ * @param pool The database pool.
+ * @param id The ID of the expense to update.
+ * @param paid The new paid status.
+ * @returns The updated expense.
+ */
 export async function updateRoommateExpensePaid(
   pool: Pool,
   id: string,
@@ -353,7 +390,11 @@ export async function deleteHouseExpense(pool: Pool, id: string): Promise<void> 
   }
 }
 
-// Registers the expense-related routes with the Express app.
+/**
+ * Registers the expense-related API routes with the provided Express application and database pool.
+ * @param app The Express application to register routes with.
+ * @param pool The express database pool to use for database queries.
+ */
 export function registerExpenseRoutes(app: Express, pool: Pool): void {
   app.get('/houseexpenses', async (_request: Request, response: Response) => {
     const expenses = await getHouseExpenses(pool);

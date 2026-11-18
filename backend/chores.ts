@@ -1,3 +1,14 @@
+/**
+ * Roomie Chores API
+ * 
+ * This module defines the API routes for managing chores within a conversation.
+ * It includes endpoints for retrieving chore lists, creating new chore lists,
+ * adding items to chore lists, updating item status, and deleting chore lists or items.
+ * 
+ * The API ensures that users have the appropriate access rights to perform actions
+ * on chore lists and items. Notifications are sent to relevant users when new chores
+ * are added or assigned.
+ */
 import type { Express, Response } from 'express';
 import type { Pool } from 'pg';
 import {
@@ -40,6 +51,11 @@ const ITEM_COLUMNS = `
   ci.done_at AS "doneAt",
   ci.created_at AS "createdAt"`;
 
+  /**
+   * Converts a database row to a chore item.
+   * @param row A row in the database.
+   * @returns The chore item.
+   */
 function toItem(row: Record<string, unknown>): ChoreItem {
   return {
     id: String(row.id),
@@ -51,6 +67,12 @@ function toItem(row: Record<string, unknown>): ChoreItem {
   };
 }
 
+/**
+ * Sends an access error response based on the access level.
+ * @param response The error response object to send the error to.
+ * @param access The access level to check.
+ * @returns A boolean indicating whether an error was sent.
+ */
 function sendAccessError(
   response: Response,
   access: 'not_found' | 'not_member' | 'member'
@@ -66,6 +88,13 @@ function sendAccessError(
   return false;
 }
 
+/**
+ * Checks if a user has access to a specific chore list.
+ * @param pool - The database pool.
+ * @param listId - The ID of the chore list.
+ * @param userId - The ID of the user.
+ * @returns A promise resolving to the access level ('member', 'not_member', or 'not_found').
+ */
 async function listAccess(pool: Pool, listId: string, userId: string) {
   if (!UUID_PATTERN.test(listId)) return 'not_found' as const;
   const result = await pool.query<{ isMember: boolean }>(
@@ -80,6 +109,14 @@ async function listAccess(pool: Pool, listId: string, userId: string) {
   return result.rows[0].isMember ? ('member' as const) : ('not_member' as const);
 }
 
+/**
+ * Used by PATCH /chores/items/:itemId route to check if a user has access to a specific chore item.
+ * Checks if a user has access to a specific chore item.
+ * @param pool The database pool to use for the query.
+ * @param itemId The chore item ID to check access for.
+ * @param userId The user ID to check access for.
+ * @returns A promise resolving to the access level ('member', 'not_member', or 'not_found').
+ */
 async function itemAccess(pool: Pool, itemId: string, userId: string) {
   if (!ITEM_ID_PATTERN.test(itemId)) return 'not_found' as const;
   const result = await pool.query<{ isMember: boolean }>(
@@ -103,7 +140,17 @@ function forbidden(response: Response): void {
   response.status(403).json({ error: 'User is not a member of this conversation.' });
 }
 
-// A new chore goes to the list's roommate, or to the whole house when the list is shared.
+/**
+ * Used by POST /conversations/:inviteCode/chores route to send notifications when a new chore is added.
+ * Creates a notification for a new chore added to a list. 
+ * If the chore list is assigned to a specific user, only that user will be notified. 
+ * If the chore list is unassigned, all members of the household will be notified.
+ * @param pool The database pool to use for the query.
+ * @param listId The ID of the chore list where the new chore was added.
+ * @param text The text of the new chore that was added.
+ * @param author The user who added the new chore.
+ * @returns A promise resolving to void.
+ */
 async function notifyChoreAdded(pool: Pool, listId: string, text: string, author: AuthUser): Promise<void> {
   try {
     const list = await pool.query<{ title: string; householdId: string; assignedTo: string | null }>(
@@ -128,6 +175,11 @@ async function notifyChoreAdded(pool: Pool, listId: string, text: string, author
   }
 }
 
+/**
+ * Registers the chore-related API routes with the provided Express application and database pool.
+ * @param app The Express application to register routes with.
+ * @param pool The express database pool to use for database queries.
+ */
 export function registerChoreRoutes(app: Express, pool: Pool): void {
   app.get('/conversations/:inviteCode/chores', authenticated(pool, async (request, response) => {
     const inviteCode = routeParam(request, 'inviteCode');

@@ -1,0 +1,1 @@
+// This file is needed so that TypeScript can resolve the module paths correctly when using NodeNext module resolution. It's intentionally left empty.
