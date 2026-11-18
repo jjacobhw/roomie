@@ -19,6 +19,7 @@ import { getConversations, getMessages } from './texting';
 import { publicAttachments, type StoredAttachment } from './storage';
 import { registerChoreRoutes } from './chores';
 import { registerUploadRoutes } from './uploads';
+import { registerNotificationRoutes } from './notifications';
 import { registerExpenseRoutes } from './expenses';
 
 const SESSION_LIFETIME_DAYS = 30;
@@ -316,6 +317,7 @@ export function registerRoutes(app: Express, pool: Pool): void {
   });
 
   registerUploadRoutes(app, pool);
+  registerNotificationRoutes(app, pool);
 
   app.post('/users', asyncRoute(async (request, response) => {
     const body: unknown = request.body;
