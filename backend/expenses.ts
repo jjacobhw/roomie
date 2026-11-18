@@ -1,6 +1,8 @@
 /**
- * Roomie Expenses Module
- * Provides functions to manage expenses in PostgreSQL.
+ * Roomie Expenses API 
+ * 
+ * Provides functions to manage household expenses, roommate expenses, and expense-related API routes in PostgreSQL.
+ * 
  * All error messages are logged to the console.
  */
 

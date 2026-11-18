@@ -1,13 +1,9 @@
 /**
  * Roomie Chores API
  * 
- * This module defines the API routes for managing chores within a conversation.
- * It includes endpoints for retrieving chore lists, creating new chore lists,
- * adding items to chore lists, updating item status, and deleting chore lists or items.
+ * Provides functions to manage chores, chore lists, chore items, and chore-related API routes in PostgreSQL.
  * 
- * The API ensures that users have the appropriate access rights to perform actions
- * on chore lists and items. Notifications are sent to relevant users when new chores
- * are added or assigned.
+ * All error messages are logged to the console.
  */
 import type { Express, Response } from 'express';
 import type { Pool } from 'pg';
