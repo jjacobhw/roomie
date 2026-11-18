@@ -12,3 +12,14 @@ export function mergeMessages(current: Message[], incoming: Message[]): Message[
     (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp),
   );
 }
+
+// The alert to pin at the top: the most recent message posted as an alert, or null.
+export function latestAlert(messages: Message[]): Message | null {
+  let latest: Message | null = null;
+  for (const message of messages) {
+    if (message.isAlert && (!latest || Date.parse(message.timestamp) >= Date.parse(latest.timestamp))) {
+      latest = message;
+    }
+  }
+  return latest;
+}

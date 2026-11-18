@@ -10,6 +10,10 @@ export type Message = {
   timestamp: string;
   // Files sent with the message. Empty for plain text.
   attachments: MessageAttachment[];
+  // Posted as an alert: the chat pins the latest one at the top.
+  isAlert: boolean;
+  // Names of the people who acknowledged the alert. Always empty for ordinary messages.
+  seenBy: string[];
 };
 
 // A file inside a message. `url` is a temporary download link from the server.

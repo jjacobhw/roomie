@@ -463,6 +463,12 @@ export function registerRoutes(app: Express, pool: Pool): void {
       }
     }
 
+    if (body.isAlert !== undefined && typeof body.isAlert !== 'boolean') {
+      response.status(400).json({ error: 'isAlert must be a boolean.' });
+      return;
+    }
+    const isAlert = body.isAlert === true;
+
     // A message needs text, attachments, or both.
     if (messageText.length > 2000 || (messageText.length < 1 && attachmentIds.length === 0)) {
       response.status(400).json({
@@ -500,14 +506,14 @@ export function registerRoutes(app: Express, pool: Pool): void {
       }
 
       const result = await client.query<{ id: string; messageText: string; timestamp: Date }>(
-        `INSERT INTO posts (household_id, author_id, body)
-         SELECT h.id, u.id, $3
+        `INSERT INTO posts (household_id, author_id, body, is_alert)
+         SELECT h.id, u.id, $3, $4
          FROM households h
          JOIN household_members hm ON hm.household_id = h.id
          JOIN users u ON u.id = hm.user_id
          WHERE h.invite_code = $1 AND u.id = $2
          RETURNING id, body AS "messageText", created_at AS timestamp`,
-        [routeParam(request, 'inviteCode'), request.authUser.id, messageText]
+        [routeParam(request, 'inviteCode'), request.authUser.id, messageText, isAlert]
       );
 
       if (result.rows.length === 0) {
@@ -557,11 +563,22 @@ export function registerRoutes(app: Express, pool: Pool): void {
         );
       }
 
+      // The sender has obviously seen their own alert.
+      if (isAlert) {
+        await client.query(
+          'INSERT INTO alert_seen (post_id, user_id) VALUES ($1, $2)',
+          [postId, request.authUser.id]
+        );
+      }
+
       await client.query('COMMIT');
       response.status(201).json({
         message: {
           ...message,
+          id: String(postId),
           username: request.authUser.username,
+          isAlert,
+          seenBy: isAlert ? [request.authUser.username] : [],
           attachments: await publicAttachments(attachments),
         },
       });
@@ -579,6 +596,49 @@ export function registerRoutes(app: Express, pool: Pool): void {
     } finally {
       client.release();
     }
+  }));
+
+  // Acknowledge an alert. Returns everyone who has now seen it. Safe to call twice.
+  app.post('/alerts/:alertId/seen', authenticated(pool, async (request, response) => {
+    const alertId = routeParam(request, 'alertId');
+    if (!/^\d{1,18}$/.test(alertId)) {
+      response.status(404).json({ error: 'Alert not found.' });
+      return;
+    }
+
+    // Only members of the alert's household may see it, and only alerts can be acknowledged.
+    const alert = await pool.query<{ isMember: boolean }>(
+      `SELECT EXISTS (
+                SELECT 1 FROM household_members hm
+                WHERE hm.household_id = p.household_id AND hm.user_id = $2
+              ) AS "isMember"
+       FROM posts p
+       WHERE p.id = $1 AND p.is_alert`,
+      [alertId, request.authUser.id]
+    );
+    if (alert.rows.length === 0) {
+      response.status(404).json({ error: 'Alert not found.' });
+      return;
+    }
+    if (!alert.rows[0].isMember) {
+      response.status(403).json({ error: 'User is not a member of this conversation.' });
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO alert_seen (post_id, user_id) VALUES ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [alertId, request.authUser.id]
+    );
+    const seen = await pool.query<{ username: string }>(
+      `SELECT u.display_name AS username
+       FROM alert_seen s
+       JOIN users u ON u.id = s.user_id
+       WHERE s.post_id = $1
+       ORDER BY s.seen_at, u.display_name`,
+      [alertId]
+    );
+    response.json({ seenBy: seen.rows.map((row) => row.username) });
   }));
 
   app.post('/conversations', authenticated(pool, async (request, response) => {
