@@ -20,5 +20,9 @@
     "@types/pg": "^8.15.5",
     "tsx": "^4.20.3",
     "typescript": "^5.9.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true
   }
 }
