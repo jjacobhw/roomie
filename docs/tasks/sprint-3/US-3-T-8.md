@@ -1,5 +1,5 @@
 ---
-id: US-1-T-9
+id: US-3-T-8
 story: US-3
 sprint: 3
 assignee: <your name>
@@ -9,7 +9,7 @@ estimate_hours: 4
 # Send a push notification to roommates when a chore is assigned or added
 
 ## Description
-Serves US-1 (U.1.2: alert roommates about the house with a guarantee they'll see it), second half of sprint plan Task 3.8 (send a notification when something new is posted). Alerts (Task 3.6) are not in the backend yet, so this slice sends on the household events that exist today: a new chore list assigned to a roommate, and a new chore item. It uses the tokens saved by US-1-T-8. Sending on alert creation (once Task 3.6 lands), reminders for due chores, notification settings, read receipts, and Web Push for the browser are out of scope.
+Serves US-1 (U.1.2: alert roommates about the house with a guarantee they'll see it), second half of sprint plan Task 3.8 (send a notification when something new is posted). Alerts (Task 3.6) are not in the backend yet, so this slice sends on the household events that exist today: a new chore list assigned to a roommate, and a new chore item. It uses the tokens saved by US-3-T-8. Sending on alert creation (once Task 3.6 lands), reminders for due chores, notification settings, read receipts, and Web Push for the browser are out of scope.
 
 ## Specs
 - `notifyUsers(pool, userIds, message)` in `backend/notifications.ts` looks up every token in `push_tokens` for those users (duplicates in `userIds` count once) and sends one message per token to Expo's push service, `POST https://exp.host/--/api/v2/push/send`, in batches of at most 100. Each message has `to`, `title`, `body`, `data`, `sound: "default"`, `channelId: "default"`.
@@ -24,7 +24,7 @@ Serves US-1 (U.1.2: alert roommates about the house with a guarantee they'll see
 - If `EXPO_ACCESS_TOKEN` is set, requests to Expo carry `Authorization: Bearer <EXPO_ACCESS_TOKEN>`.
 
 ## Requirements
-- Use the `push_tokens` table and routes from US-1-T-8. Do not store tokens anywhere else.
+- Use the `push_tokens` table and routes from US-3-T-8. Do not store tokens anywhere else.
 - Use Node's built-in `fetch`. No new runtime dependencies in `backend/` (no `expo-server-sdk`).
 - Chore routes keep their existing status codes, bodies and member checks, and their existing tests keep passing.
 - Tests use a mocked `pg` pool and a stubbed `fetch`, so they need no live database and make no real calls to Expo.
