@@ -28,3 +28,9 @@ export function latestAlert(messages: Message[]): Message | null {
 export function canAcknowledge(alert: Message, username: string): boolean {
   return alert.isAlert && !alert.seenBy.includes(username);
 }
+
+// Whether the 🔔 toggle stays on after a send: it resets only when the send succeeded, so a failed
+// alert can be retried as an alert.
+export function alertToggleAfterSend(asAlert: boolean, sendOk: boolean): boolean {
+  return sendOk ? false : asAlert;
+}

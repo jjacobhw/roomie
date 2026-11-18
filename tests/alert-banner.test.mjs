@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { users, withAlertApi } from './alert_test_helpers.mjs';
 // Loaded after the helper registers its .ts resolver.
-const { canAcknowledge, latestAlert } = await import('../frontend/src/utils/messages.ts');
+const { alertToggleAfterSend, canAcknowledge, latestAlert } = await import('../frontend/src/utils/messages.ts');
 
 // ---- Backend ---------------------------------------------------------------------------------
 
@@ -150,4 +150,11 @@ test('US-3-T-7 the Got it button is offered only to a user who has not seen the 
   assert.equal(canAcknowledge(alert, 'olivia'), false);
   // Acknowledging adds the user to seenBy (as useConversation.acknowledge does), and the button goes away.
   assert.equal(canAcknowledge({ ...alert, seenBy: [...alert.seenBy, 'max'] }, 'max'), false);
+});
+
+test('US-3-T-7 the alert toggle turns off after a successful send and stays on after a failed one', () => {
+  assert.equal(alertToggleAfterSend(true, true), false);
+  assert.equal(alertToggleAfterSend(true, false), true);
+  assert.equal(alertToggleAfterSend(false, true), false);
+  assert.equal(alertToggleAfterSend(false, false), false);
 });
