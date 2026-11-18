@@ -29,6 +29,9 @@ export interface Message {
   messageText: string;
   attachments: unknown[];
   timestamp: Date | string;
+  isAlert?: boolean;
+  // Names of the people who acknowledged it. Only meaningful when isAlert is true.
+  seenBy?: string[];
 }
 
 export interface Conversation {
@@ -58,10 +61,12 @@ const toIsoString = (value: Date | string | null | undefined): string | null => 
 
 function normalizeMessage(row: Record<string, unknown>): Message {
   return {
-    id: typeof row.id === 'string' ? row.id : undefined,
+    id: row.id === undefined || row.id === null ? undefined : String(row.id),
     username: String(row.username ?? ''),
     messageText: String(row.messageText ?? ''),
     attachments: Array.isArray(row.attachments) ? row.attachments : [],
+    isAlert: Boolean(row.isAlert),
+    seenBy: Array.isArray(row.seenBy) ? row.seenBy.map(String) : [],
     timestamp: row.timestamp instanceof Date ? row.timestamp : (toIsoString(String(row.timestamp ?? new Date())) ?? new Date()),
   };
 }
@@ -193,8 +198,16 @@ export async function getMessages(
   }
 
   const result = await pgClient.query<Record<string, unknown>>(
-    `SELECT u.display_name AS username,
+    `SELECT p.id::text AS id,
+            u.display_name AS username,
             p.body AS "messageText",
+            p.is_alert AS "isAlert",
+            COALESCE((
+              SELECT array_agg(su.display_name ORDER BY s.seen_at, su.display_name)
+              FROM alert_seen s
+              JOIN users su ON su.id = s.user_id
+              WHERE s.post_id = p.id
+            ), ARRAY[]::text[]) AS "seenBy",
             COALESCE((
               SELECT json_agg(json_build_object(
                          'id', a.id,

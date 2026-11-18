@@ -119,7 +119,9 @@ export function parseMessage(raw: unknown): Message {
     m.id !== undefined && m.id !== null
       ? String(m.id)
       : `${timestamp}|${username}|${messageText}|${attachmentIds}`;
-  return { id, username, messageText, timestamp, attachments };
+  const isAlert = m.isAlert === true;
+  const seenBy = isAlert && Array.isArray(m.seenBy) ? m.seenBy.map(String) : [];
+  return { id, username, messageText, timestamp, attachments, isAlert, seenBy };
 }
 
 type RequestOptions = {
@@ -251,16 +253,23 @@ export async function sendMessage(
   inviteCode: string,
   messageText: string,
   attachmentIds: string[] = [],
+  isAlert = false,
 ): Promise<Message> {
   const text = messageText.trim();
   if (!text && attachmentIds.length === 0) throw new MessagingError('EMPTY_MESSAGE', 'Message is empty');
 
-  const data = await request('POST', `/messages/${enc(inviteCode)}`, {
-    token,
-    body: attachmentIds.length > 0 ? { messageText: text, attachmentIds } : { messageText: text },
-    context: 'send',
-  });
+  // Only send the optional fields that are in use, so older servers see the same body as before.
+  const body: Record<string, unknown> = { messageText: text };
+  if (attachmentIds.length > 0) body.attachmentIds = attachmentIds;
+  if (isAlert) body.isAlert = true;
+  const data = await request('POST', `/messages/${enc(inviteCode)}`, { token, body, context: 'send' });
   return parseMessage(data?.message);
+}
+
+// Mark an alert as seen by you. Returns everyone who has seen it so far.
+export async function markAlertSeen(token: string, alertId: string): Promise<string[]> {
+  const data = await request('POST', `/alerts/${enc(alertId)}/seen`, { token });
+  return Array.isArray(data?.seenBy) ? data.seenBy.map(String) : [];
 }
 
 // Three steps, like the backend: get a presigned URL, send the bytes straight to storage,

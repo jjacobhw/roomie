@@ -19,6 +19,11 @@ export const colors = {
   textMuted: '#7A6556', // sender names, subtitles
   textFaint: '#A8978A', // timestamps, labels, placeholders, footnote
 
+  // Alerts (pinned banner and alert messages)
+  alertBackground: '#FFF1D6',
+  alertBorder: '#E8B04A',
+  alertText: '#6B4300',
+
   // Status
   error: '#B3402E',
   online: '#5A9E5F',

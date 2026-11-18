@@ -11,10 +11,12 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { AlertBanner } from '../components/AlertBanner';
 import { Composer } from '../components/Composer';
 import { MessageBubble } from '../components/MessageBubble';
 import { useConversation } from '../hooks/useConversation';
 import { colors } from '../constants/colors';
+import { latestAlert } from '../utils/messages';
 import { USING_MOCK } from '../config';
 
 type Props = {
@@ -30,12 +32,13 @@ type Props = {
 };
 
 export function ChatScreen({ username, token, inviteCode, householdName, onOpenInfo, onSessionExpired }: Props) {
-  const { messages, loading, loadError, sending, send, uploading, upload } = useConversation(
+  const { messages, loading, loadError, sending, send, uploading, upload, acknowledge } = useConversation(
     token,
     inviteCode,
     onSessionExpired,
   );
   const scrollRef = useRef<ScrollViewInstance>(null);
+  const pinnedAlert = latestAlert(messages);
 
   return (
     <View style={styles.safeArea}>
@@ -66,6 +69,8 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
             <Text style={styles.infoButtonText}>Members</Text>
           </Pressable>
         </View>
+
+        {pinnedAlert && <AlertBanner alert={pinnedAlert} username={username} onAcknowledge={acknowledge} />}
 
         {loading ? (
           <View style={styles.centered}>
