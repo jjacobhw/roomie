@@ -3,7 +3,7 @@
     "build": "tsc",
     "dev": "tsx watch server.ts",
     "start": "node dist/server.js",
-    "db:check": "tsx db-check.ts"
+    "db:check": "node ../tests/db-check.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1160.0",

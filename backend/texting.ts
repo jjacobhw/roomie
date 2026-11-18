@@ -1,7 +1,10 @@
 /**
- * Roomie Texting Module
+ * Roomie Texting API
+ * 
  * Provides functions to manage user accounts, conversations, and messages in PostgreSQL.
+ * 
  * All error messages are logged to the console.
+ * Austin LaMarche
  */
 
 import { publicAttachments, type StoredAttachment } from './storage';
@@ -280,7 +283,7 @@ export async function createAccount(
 }
 
 /**
- * Has no API command.
+ * Has no API command. TODO: Add an API command for this function if there's time.
  * Update the user's username in PostgreSQL.
  * @param pgClient The PostgreSQL client to use for the query.
  * @param oldUsername The current username of the user.
@@ -306,7 +309,7 @@ export async function updateProfileUsername(
 }
 
 /**
- * Has no API command.
+ * Has no API command. TODO: Add an API command for this function if there's time.
  * Update the user's profile picture (avatar URL) in PostgreSQL.
  * @param pgClient The PostgreSQL client to use for the query.
  * @param username The username of the user.

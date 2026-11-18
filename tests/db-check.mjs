@@ -2,17 +2,21 @@
   Connection test: `npm run db:check` (from backend/).
   Prints the server time and version, and which Roomie tables exist.
  */
-import { checkDatabase, pool } from './db';
+import { createRequire } from 'node:module';
+
+const require = createRequire(new URL('../backend/package.json', import.meta.url));
+const { tsImport } = await import(require.resolve('tsx/esm/api'));
+const { checkDatabase, pool } = await tsImport('../backend/db.ts', import.meta.url);
 
 async function main() {
-  const host = new URL(process.env.DATABASE_URL!).host;
+  const host = new URL(process.env.DATABASE_URL).host;
   console.log(`Connecting to ${host} ...`);
 
   const info = await checkDatabase();
   console.log(`Connected to database "${info.database}" at ${info.now.toISOString()}`);
   console.log(info.version);
 
-  const tables = await pool.query<{ table_name: string }>(
+  const tables = await pool.query(
     `SELECT table_name FROM information_schema.tables
      WHERE table_schema = 'public' ORDER BY table_name`
   );
