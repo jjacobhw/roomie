@@ -6,7 +6,9 @@ import {
   isRecord,
   routeParam,
   UUID_PATTERN,
+  type AuthUser,
 } from './routes';
+import { notifyHousehold, notifyUsers } from './notifications';
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 200;
@@ -99,6 +101,31 @@ function notFound(response: Response, what: string): void {
 
 function forbidden(response: Response): void {
   response.status(403).json({ error: 'User is not a member of this conversation.' });
+}
+
+// A new chore goes to the list's roommate, or to the whole house when the list is shared.
+async function notifyChoreAdded(pool: Pool, listId: string, text: string, author: AuthUser): Promise<void> {
+  try {
+    const list = await pool.query<{ title: string; householdId: string; assignedTo: string | null }>(
+      `SELECT title, household_id AS "householdId", assigned_to AS "assignedTo"
+       FROM chore_lists WHERE id = $1`,
+      [listId]
+    );
+    if (list.rows.length === 0) return;
+    const { title, householdId, assignedTo } = list.rows[0];
+    const message = {
+      title: `New chore in ${title}`,
+      body: `${author.username}: ${text}`,
+      data: { type: 'chore', listId },
+    };
+    if (assignedTo === null) {
+      await notifyHousehold(pool, householdId, author.id, message);
+    } else if (assignedTo !== author.id) {
+      await notifyUsers(pool, [assignedTo], message);
+    }
+  } catch (error) {
+    console.error('Chore notification failed:', error);
+  }
 }
 
 export function registerChoreRoutes(app: Express, pool: Pool): void {
@@ -199,6 +226,13 @@ export function registerChoreRoutes(app: Express, pool: Pool): void {
        RETURNING id, created_at AS "createdAt"`,
       [inviteCode, title, assigneeId, request.authUser.id]
     );
+    if (assigneeId && assigneeId !== request.authUser.id) {
+      void notifyUsers(pool, [assigneeId], {
+        title: 'New chore list',
+        body: `${request.authUser.username} assigned you "${title}"`,
+        data: { type: 'chore', listId: result.rows[0].id },
+      });
+    }
     const choreList: ChoreList = {
       id: result.rows[0].id,
       title,
@@ -241,6 +275,7 @@ export function registerChoreRoutes(app: Express, pool: Pool): void {
       [listId, text, request.authUser.id]
     );
     response.status(201).json({ item: toItem(result.rows[0]) });
+    void notifyChoreAdded(pool, listId, text, request.authUser);
   }));
 
   app.patch('/chores/items/:itemId', authenticated(pool, async (request, response) => {

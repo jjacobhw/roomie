@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { colors } from './src/constants/colors';
@@ -7,6 +7,7 @@ import { HouseholdInfoScreen } from './src/screens/HouseholdInfoScreen';
 import { JoinScreen } from './src/screens/JoinScreen';
 import { MainTabs } from './src/screens/MainTabs';
 import { getMyConversation, signOut } from './src/services/messagingApi';
+import { disablePushNotifications, enablePushNotifications } from './src/services/pushNotifications';
 import { Session } from './src/types/messaging';
 
 // Which screen shows depends on two things (so no navigation library is needed yet):
@@ -54,6 +55,12 @@ function AppContent() {
     setChecking(false);
   }, []);
 
+  // Once signed in, ask to send phone notifications (chores, expenses). Does nothing on web.
+  const sessionToken = session?.token;
+  useEffect(() => {
+    if (sessionToken) void enablePushNotifications(sessionToken);
+  }, [sessionToken]);
+
   // After create / join, show the chat at once and fill in the household's name when it arrives.
   const handleEnter = useCallback(
     (code: string) => {
@@ -78,9 +85,15 @@ function AppContent() {
     setShowInfo(false);
   }, []);
 
-  // Log out: tell the server to forget the token (best effort), then go back to sign in.
+  // Log out: stop this phone's notifications and tell the server to forget the token
+  // (both best effort), then go back to sign in.
   const handleLogout = useCallback(() => {
-    if (session) signOut(session.token).catch(() => {});
+    if (session) {
+      const { token } = session;
+      disablePushNotifications(token)
+        .then(() => signOut(token))
+        .catch(() => {});
+    }
     reset();
   }, [session, reset]);
 

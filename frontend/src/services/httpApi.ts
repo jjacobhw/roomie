@@ -312,6 +312,15 @@ export async function uploadAttachment(
   return { id: a.id, fileName: a.fileName, contentType: a.contentType, sizeBytes: a.sizeBytes };
 }
 
+// Push notifications: tell the server which phone (Expo push token) belongs to this user.
+export async function registerPushToken(token: string, pushToken: string, platform: 'ios' | 'android'): Promise<void> {
+  await request('POST', '/push-tokens', { token, body: { token: pushToken, platform } });
+}
+
+export async function unregisterPushToken(token: string, pushToken: string): Promise<void> {
+  await request('DELETE', '/push-tokens', { token, body: { token: pushToken } });
+}
+
 // ---- Chores -----------------------------------------------------------------------------------
 
 // Accept what the server sends and return exactly the ChoreItem the UI expects.
