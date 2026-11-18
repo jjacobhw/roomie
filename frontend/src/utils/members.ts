@@ -1,4 +1,4 @@
-import { HouseholdMember } from '../types/messaging';
+import type { HouseholdMember } from '../types/messaging';
 
 // Owner first, then everyone else by name (case-insensitive).
 export function sortMembers(members: HouseholdMember[]): HouseholdMember[] {
