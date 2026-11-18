@@ -1,8 +1,11 @@
-/*
-  Shared Postgres connection for the backend.
-
-  Reads DATABASE_URL from the environment, or from the repo-root .env file.
-  Works for both local Postgres and Neon (Neon URLs carry sslmode=require).
+/**
+ * Shared Postgres connection for Roomie backend.
+ *
+ * Reads DATABASE_URL from the environment, or from the repo-root .env file.
+ * Works for both local Postgres and Neon (Neon URLs carry sslmode=require).
+ * 
+ * Error messages are logged to the console.
+ * Austin LaMarche
  */
 import { config } from 'dotenv';
 import { existsSync } from 'node:fs';
