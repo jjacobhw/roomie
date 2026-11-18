@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/colors';
 import { Message } from '../types/messaging';
+import { canAcknowledge } from '../utils/messages';
 
 type Props = {
   alert: Message;
@@ -15,7 +16,6 @@ type Props = {
 export function AlertBanner({ alert, username, onAcknowledge }: Props) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const iHaveSeen = alert.seenBy.includes(username);
 
   async function handleAcknowledge() {
     if (busy) return;
@@ -41,7 +41,7 @@ export function AlertBanner({ alert, username, onAcknowledge }: Props) {
         </Text>
         {failed && <Text style={styles.error}>Couldn’t mark as seen. Try again.</Text>}
       </View>
-      {!iHaveSeen && (
+      {canAcknowledge(alert, username) && (
         <Pressable
           accessibilityLabel="Mark alert as seen"
           accessibilityRole="button"

@@ -1,4 +1,4 @@
-import { Message } from '../types/messaging';
+import type { Message } from '../types/messaging';
 
 // Combine two lists of messages into one, oldest first, with no duplicates (by id).
 // Needed because a poll can come back while a send is still in flight: replacing the
@@ -22,4 +22,9 @@ export function latestAlert(messages: Message[]): Message | null {
     }
   }
   return latest;
+}
+
+// Whether to offer the "Got it" button: only to someone who hasn't yet seen the alert.
+export function canAcknowledge(alert: Message, username: string): boolean {
+  return alert.isAlert && !alert.seenBy.includes(username);
 }
