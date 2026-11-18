@@ -8,7 +8,8 @@ estimate_hours: 2
 
 # Fix attachment uploads in group chat
 
-## Serves US-3 (input household expenses). This task covers when someone wants to upload a receipt for a shared cost, in order to split costs effectively
+## Description
+Serves US-3 (input household expenses). This task covers when someone wants to upload a receipt for a shared cost, in order to split costs effectively
 
 ## Specs
 - POST /conversations/:inviteCode/attachments with {"fileName":"pic.png","contentType":"image/png","sizeBytes":12345} uploads attachment to chat
