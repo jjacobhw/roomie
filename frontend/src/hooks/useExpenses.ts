@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createExpense, getExpenses } from '../services/messagingApi';
+import { createExpense, deleteExpense, getExpenses } from '../services/messagingApi';
 import type { Expense, NewExpense } from '../types/expenses';
 import { MessagingError } from '../types/messaging';
-import { addExpense } from '../utils/expenses';
+import { addExpense, removeExpense } from '../utils/expenses';
 
 const POLL_INTERVAL_MS = 10000; // so a roommate's new expense shows up without a manual refresh
 
@@ -88,5 +88,30 @@ export function useExpenses(token: string, inviteCode: string, onSessionExpired:
     [token, inviteCode, refresh],
   );
 
-  return { expenses, loading, loadError, refreshing, reload, refresh, create };
+  // Delete an expense you added. It disappears at once; if the server refuses, the refresh that
+  // follows brings it back and the reason is returned.
+  const remove = useCallback(
+    async (expenseId: string): Promise<ExpenseResult> => {
+      inFlight.current++;
+      changes.current++;
+      if (alive.current) setExpenses((current) => removeExpense(current, expenseId));
+      try {
+        await deleteExpense(token, inviteCode, expenseId);
+        return { ok: true };
+      } catch (e) {
+        if (e instanceof MessagingError) {
+          if (e.code === 'UNAUTHENTICATED') expiredRef.current();
+          return { ok: false, error: e.message };
+        }
+        return { ok: false, error: 'Something went wrong' };
+      } finally {
+        inFlight.current--;
+        changes.current++;
+        refresh();
+      }
+    },
+    [token, inviteCode, refresh],
+  );
+
+  return { expenses, loading, loadError, refreshing, reload, refresh, create, remove };
 }

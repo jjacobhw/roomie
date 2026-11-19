@@ -178,3 +178,17 @@ export function checkSplits(totalCents: number, splits: NewExpenseSplit[]): stri
   if (sum(splits.map((split) => split.amountCents)) !== totalCents) return 'The shares must add up to the total.';
   return null;
 }
+
+// Only the person who added an expense can delete it. The person who adds an expense is always
+// recorded as the one who paid, so that is who it belongs to.
+export function canDeleteExpense(expense: Expense, me: string): boolean {
+  return sameName(expense.paidByUsername, me);
+}
+
+// Take an expense out of the list. If it isn't there, the same list comes back.
+export function removeExpense(expenses: Expense[], expenseId: string): Expense[] {
+  return expenses.some((expense) => expense.id === expenseId)
+    ? expenses.filter((expense) => expense.id !== expenseId)
+    : expenses;
+}
+

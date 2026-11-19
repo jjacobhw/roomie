@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Platform,
   Pressable,
   RefreshControl,
@@ -16,9 +17,12 @@ import { ExpenseRow } from '../components/ExpenseRow';
 import { USING_MOCK } from '../config';
 import { colors } from '../constants/colors';
 import { useExpenses } from '../hooks/useExpenses';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { getMembers } from '../services/messagingApi';
+import type { Expense } from '../types/expenses';
 import type { HouseholdMember } from '../types/messaging';
-import { computeBalances, groupByDay } from '../utils/expenses';
+import { canDeleteExpense, computeBalances, groupByDay } from '../utils/expenses';
+import { confirmAction } from '../utils/confirm';
 
 type Props = {
   username: string;
@@ -30,7 +34,7 @@ type Props = {
 
 // Shared household expenses: the balance up top, then every expense newest first, and a button to add one.
 export function ExpensesScreen({ username, token, inviteCode, onSessionExpired }: Props) {
-  const { expenses, loading, loadError, refreshing, reload, refresh, create } = useExpenses(
+  const { expenses, loading, loadError, refreshing, reload, refresh, create, remove } = useExpenses(
     token,
     inviteCode,
     onSessionExpired,
@@ -38,6 +42,35 @@ export function ExpensesScreen({ username, token, inviteCode, onSessionExpired }
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Why the last delete failed, until the next action.
+  const [actionError, setActionError] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
+
+  // Animate the next layout change (a row opening or closing, or a row disappearing).
+  function animateLayout() {
+    if (!reduceMotion) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }
+
+  function toggle(expenseId: string) {
+    animateLayout();
+    setExpandedId((current) => (current === expenseId ? null : expenseId));
+  }
+
+  async function handleDelete(expense: Expense) {
+    const sure = await confirmAction(
+      `Delete “${expense.title}”?`,
+      'It will be removed for everyone in the household.',
+      'Delete',
+    );
+    if (!sure) return;
+    setActionError(null);
+    setDeletingId(expense.id);
+    animateLayout();
+    const result = await remove(expense.id);
+    setDeletingId(null);
+    if (!result.ok) setActionError(result.error);
+  }
 
   // The roommates to split with. Reloaded each time the sheet opens, in case someone has joined.
   async function loadMembers() {
@@ -83,6 +116,7 @@ export function ExpensesScreen({ username, token, inviteCode, onSessionExpired }
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl colors={[colors.primary]} onRefresh={reload} refreshing={refreshing} tintColor={colors.primary} />}
         >
+          {actionError && <Text style={styles.banner}>{actionError}</Text>}
           {loadError && (
             <Pressable onPress={refresh}>
               <Text style={styles.banner}>{loadError} (tap to retry)</Text>
@@ -113,10 +147,14 @@ export function ExpensesScreen({ username, token, inviteCode, onSessionExpired }
                 {group.expenses.map((expense, index) => (
                   <View key={expense.id} style={index > 0 && styles.divided}>
                     <ExpenseRow
+                      canDelete={canDeleteExpense(expense, username)}
+                      deleting={deletingId === expense.id}
                       expanded={expandedId === expense.id}
                       expense={expense}
                       me={username}
-                      onPress={() => setExpandedId((current) => (current === expense.id ? null : expense.id))}
+                      onDelete={() => handleDelete(expense)}
+                      onPress={() => toggle(expense.id)}
+                      reduceMotion={reduceMotion}
                     />
                   </View>
                 ))}

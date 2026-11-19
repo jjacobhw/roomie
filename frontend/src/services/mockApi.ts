@@ -509,3 +509,15 @@ export async function createExpense(token: string, inviteCode: string, input: Ne
   return { ...expense, splits: expense.splits.map((split) => ({ ...split })) };
 }
 
+export async function deleteExpense(token: string, inviteCode: string, expenseId: string): Promise<void> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+  const expense = house.expenses.find((e) => e.id === expenseId);
+  if (!expense) throw new MessagingError('CONVERSATION_NOT_FOUND', 'Expense not found.');
+  if (expense.paidByUsername.toLowerCase() !== account.username.toLowerCase()) {
+    throw new MessagingError('NOT_A_MEMBER', 'Only the person who added an expense can delete it.');
+  }
+  house.expenses = house.expenses.filter((e) => e !== expense);
+}
+

@@ -2,20 +2,20 @@
 // so the screens don't know which one they're using.
 // Everything except sign up and sign in needs the token from signUp/signIn.
 import { API_URL } from '../config';
-import { CHORE_ITEM_MAX_LENGTH, ChoreItem, ChoreList, NewChoreList } from '../types/chores';
-import { EXPENSE_MAX_CENTS, EXPENSE_TITLE_MAX_LENGTH, Expense, NewExpense } from '../types/expenses';
+import { CHORE_ITEM_MAX_LENGTH, type ChoreItem, type ChoreList, type NewChoreList } from '../types/chores';
+import { EXPENSE_MAX_CENTS, EXPENSE_TITLE_MAX_LENGTH, type Expense, type NewExpense } from '../types/expenses';
 import { sortMembers } from '../utils/members';
 import {
-  AuthUser,
-  ConversationSummary,
-  HouseholdMember,
-  Message,
-  MessageAttachment,
+  type AuthUser,
+  type ConversationSummary,
+  type HouseholdMember,
+  type Message,
+  type MessageAttachment,
   MessagingError,
-  MessagingErrorCode,
-  PickedFile,
-  Session,
-  UploadedAttachment,
+  type MessagingErrorCode,
+  type PickedFile,
+  type Session,
+  type UploadedAttachment,
   checkAttachment,
 } from '../types/messaging';
 
@@ -24,7 +24,7 @@ const UPLOAD_TIMEOUT_MS = 60000; // the file itself can be several MB
 
 // Which request failed decides what a status code means (401 on sign in is a wrong password,
 // 401 anywhere else is an expired session).
-type Context = 'signup' | 'signin' | 'send' | 'upload' | 'other';
+type Context = 'signup' | 'signin' | 'send' | 'upload' | 'deleteExpense' | 'other';
 
 // Turn a failed HTTP response into the same errors the mock throws.
 export function errorFromResponse(
@@ -49,7 +49,7 @@ export function errorFromResponse(
       break;
     case 403:
       code = 'NOT_A_MEMBER';
-      fallback = 'You’re not in this household';
+      fallback = context === 'deleteExpense' ? 'Only the person who added an expense can delete it.' : 'You’re not in this household';
       break;
     case 413:
       code = 'FILE_TOO_LARGE';
@@ -61,7 +61,8 @@ export function errorFromResponse(
       break;
     case 404:
       code = 'CONVERSATION_NOT_FOUND';
-      fallback = 'Household not found';
+      // A 404 with no explanation on a delete means the server has no delete route at all yet.
+      fallback = context === 'deleteExpense' ? 'This server can’t delete expenses yet.' : 'Household not found';
       break;
     case 409:
       code = context === 'signup' ? 'USERNAME_TAKEN' : 'ALREADY_IN_CONVERSATION';
@@ -448,3 +449,11 @@ export async function createExpense(token: string, inviteCode: string, input: Ne
   };
 }
 
+// Only the person who added (paid for) the expense may delete it. Needs a backend route:
+// DELETE /conversations/:inviteCode/expenses/:expenseId
+export async function deleteExpense(token: string, inviteCode: string, expenseId: string): Promise<void> {
+  await request('DELETE', `/conversations/${enc(inviteCode)}/expenses/${enc(expenseId)}`, {
+    token,
+    context: 'deleteExpense',
+  });
+}

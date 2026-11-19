@@ -29,3 +29,4 @@ export const renameConversation = api.renameConversation;
 export const leaveConversation = api.leaveConversation;
 export const getExpenses = api.getExpenses;
 export const createExpense = api.createExpense;
+export const deleteExpense = api.deleteExpense;

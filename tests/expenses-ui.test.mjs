@@ -23,9 +23,10 @@ register(
 );
 
 const {
-  addExpense, balanceLines, checkSplits, computeBalances, describeShare, expenseSubtitle,
-  formatCents, groupByDay, parseAmountToCents, sanitizeAmountInput, splitEqually, splitPreview,
+  addExpense, balanceLines, canDeleteExpense, checkSplits, computeBalances, describeShare, expenseSubtitle,
+  formatCents, groupByDay, parseAmountToCents, removeExpense, sanitizeAmountInput, splitEqually, splitPreview,
 } = await import('../frontend/src/utils/expenses.ts');
+const { errorFromResponse } = await import('../frontend/src/services/httpApi.ts');
 const api = await import('../frontend/src/services/mockApi.ts');
 
 // ---- helpers ---------------------------------------------------------------------------------
@@ -333,3 +334,76 @@ test('expenses people outside the household can neither read nor add expenses, a
   await assert.rejects(api.getExpenses('bogus-token', inviteCode), (e) => e.code === 'UNAUTHENTICATED');
   await assert.rejects(api.getExpenses(alex.token, 'ZZZZZZ'), (e) => e.code === 'CONVERSATION_NOT_FOUND');
 });
+
+// ---- deleting an expense ---------------------------------------------------------------------------
+
+test('expenses canDeleteExpense is true only for an expense you added (you paid), whatever the letter case', () => {
+  const mine = expense('Alex', 1000, [split('Alex', 500, true), split('Sam', 500)]);
+
+  assert.equal(canDeleteExpense(mine, 'Alex'), true);
+  assert.equal(canDeleteExpense(mine, 'alex'), true);
+  assert.equal(canDeleteExpense(mine, 'Sam'), false); // in the split, but didn't add it
+  assert.equal(canDeleteExpense(mine, 'Casey'), false);
+});
+
+test('expenses removeExpense takes out just that expense, and an unknown id changes nothing', () => {
+  const a = expense('A', 1, []); const b = expense('A', 2, []);
+  const list = Object.freeze([a, b]);
+
+  assert.deepEqual(removeExpense(list, a.id).map((e) => e.id), [b.id]);
+  assert.equal(removeExpense(list, 'nope'), list);
+  assert.deepEqual(list.map((e) => e.id), [a.id, b.id]);
+});
+
+test('expenses the person who added an expense can delete it, and it disappears for everyone', async () => {
+  const { alex, sam, inviteCode } = await household();
+  const both = [
+    { userId: alex.user.id, username: alex.user.username, amountCents: 500 },
+    { userId: sam.user.id, username: sam.user.username, amountCents: 500 },
+  ];
+  const keep = await api.createExpense(alex.token, inviteCode, { title: 'Keep', amountCents: 1000, splits: both });
+  const oops = await api.createExpense(alex.token, inviteCode, { title: 'Oops', amountCents: 1000, splits: both });
+
+  await api.deleteExpense(alex.token, inviteCode, oops.id);
+
+  for (const person of [alex, sam]) {
+    assert.deepEqual((await api.getExpenses(person.token, inviteCode)).map((e) => e.id), [keep.id]);
+  }
+});
+
+test('expenses nobody else can delete your expense, not even someone who shares it', async () => {
+  const { alex, sam, outsider, inviteCode } = await household();
+  const saved = await api.createExpense(alex.token, inviteCode, {
+    title: 'Rent', amountCents: 1000,
+    splits: [{ userId: alex.user.id, username: alex.user.username, amountCents: 500 }, { userId: sam.user.id, username: sam.user.username, amountCents: 500 }],
+  });
+
+  await assert.rejects(api.deleteExpense(sam.token, inviteCode, saved.id), (error) => {
+    assert.equal(error.code, 'NOT_A_MEMBER');
+    assert.equal(error.message, 'Only the person who added an expense can delete it.');
+    return true;
+  });
+  await assert.rejects(api.deleteExpense(outsider.token, inviteCode, saved.id), (error) => error.code === 'NOT_A_MEMBER');
+  await assert.rejects(api.deleteExpense('bogus-token', inviteCode, saved.id), (error) => error.code === 'UNAUTHENTICATED');
+  assert.equal((await api.getExpenses(alex.token, inviteCode)).length, 1);
+});
+
+test('expenses deleting an expense that does not exist says so', async () => {
+  const { alex, inviteCode } = await household();
+
+  await assert.rejects(api.deleteExpense(alex.token, inviteCode, 'no-such-expense'), (error) =>
+    error.code === 'CONVERSATION_NOT_FOUND' && error.message === 'Expense not found.');
+});
+
+test('expenses on the real server, a missing delete route and a refused delete get clear messages', () => {
+  // The backend has no delete route yet: Express answers 404 with an HTML page, not JSON.
+  const noRoute = errorFromResponse(404, null, null, 'deleteExpense');
+  assert.equal(noRoute.code, 'CONVERSATION_NOT_FOUND');
+  assert.equal(noRoute.message, 'This server can’t delete expenses yet.');
+  assert.equal(errorFromResponse(403, null, null, 'deleteExpense').message, 'Only the person who added an expense can delete it.');
+  // When the server explains itself, its words win.
+  assert.equal(errorFromResponse(404, { error: 'Expense not found.' }, null, 'deleteExpense').message, 'Expense not found.');
+  // Other requests keep their old messages.
+  assert.equal(errorFromResponse(404, null).message, 'Household not found');
+});
+
