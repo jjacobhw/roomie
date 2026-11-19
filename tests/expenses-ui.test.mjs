@@ -144,6 +144,10 @@ test('expenses computeBalances ignores paid shares and the payer\'s own share, a
   assert.deepEqual(computeBalances(list, 'alex').people, [{ username: 'Taylor', cents: 2000 }]);
   assert.deepEqual(computeBalances(list, 'SAM'), { net: 0, people: [] });
   assert.deepEqual(computeBalances([], 'Alex'), { net: 0, people: [] });
+  // The payer never owes themselves, even if their own share is stored as unpaid.
+  const untidy = [expense('Alex', 4000, [split('Alex', 2000, false), split('Sam', 2000)])];
+  assert.deepEqual(computeBalances(untidy, 'Alex'), { net: 2000, people: [{ username: 'Sam', cents: 2000 }] });
+  assert.deepEqual(computeBalances(untidy, 'Sam'), { net: -2000, people: [{ username: 'Alex', cents: -2000 }] });
   // People who cancel out disappear.
   const even = [
     expense('Alex', 2000, [split('Alex', 1000, true), split('Sam', 1000)]),
