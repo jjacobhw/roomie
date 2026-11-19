@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,8 +13,10 @@ import {
 import { colors } from '../constants/colors';
 import { USING_MOCK } from '../config';
 import { useChores } from '../hooks/useChores';
+import { getMembers } from '../services/messagingApi';
 import { CHORE_ITEM_MAX_LENGTH, CHORE_TITLE_MAX_LENGTH, ChoreList } from '../types/chores';
-import { choreProgress } from '../utils/chores';
+import type { HouseholdMember } from '../types/messaging';
+import { assigneeChoices, assigneeLabel, choreProgress } from '../utils/chores';
 import { confirmAction } from '../utils/confirm';
 
 type Props = {
@@ -24,12 +26,6 @@ type Props = {
   // The server says the session is no longer valid.
   onSessionExpired: () => void;
 };
-
-// Who a list belongs to, as shown on its badge.
-function assigneeLabel(list: ChoreList, username: string): string {
-  if (list.assignee === null) return 'Whole house';
-  return list.assignee === username ? 'You' : list.assignee;
-}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -48,10 +44,37 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   // The "new list" form.
   const [newTitle, setNewTitle] = useState('');
-  const [wholeHouse, setWholeHouse] = useState(false);
+  // Who the new list is for: the key of one of assigneeChoices (Me, a roommate, or Whole house).
+  const [choiceKey, setChoiceKey] = useState('me');
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [creating, setCreating] = useState(false);
   // The reason the last change failed (e.g. the server was unreachable), until the next one.
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // The roommates to choose from. If this fails the form still offers Me and Whole house.
+  async function loadMembers() {
+    try {
+      setMembers(await getMembers(token, inviteCode));
+    } catch {
+      // keep whatever was loaded before
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    getMembers(token, inviteCode)
+      .then((loaded) => {
+        if (!cancelled) setMembers(loaded);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token, inviteCode]);
+
+  const choices = assigneeChoices(members, username);
+  // If the chosen roommate has since left, fall back to Me.
+  const selectedChoice = choices.find((choice) => choice.key === choiceKey) ?? choices[0];
 
   async function handleToggle(itemId: string, isDone: boolean) {
     setActionError(null);
@@ -90,11 +113,11 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
     if (creating) return;
     setCreating(true);
     setActionError(null);
-    // Leaving assignee out lets the server assign the list to you; null means the whole house.
-    const result = await createList({ title: newTitle, ...(wholeHouse ? { assignee: null } : {}) });
+    // assignee is a username, or null for the whole house.
+    const result = await createList({ title: newTitle, assignee: selectedChoice.assignee });
     if (result.ok) {
       setNewTitle('');
-      setWholeHouse(false);
+      setChoiceKey('me');
     } else {
       setActionError(result.error);
     }
@@ -228,6 +251,8 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
               accessibilityLabel="New list name"
               maxLength={CHORE_TITLE_MAX_LENGTH}
               onChangeText={setNewTitle}
+              // Roommates may have joined since the screen opened.
+              onFocus={loadMembers}
               onSubmitEditing={handleCreateList}
               placeholder="List name (optional)"
               placeholderTextColor={colors.textFaint}
@@ -236,22 +261,20 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
               value={newTitle}
             />
             <View style={styles.chipRow}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: !wholeHouse }}
-                onPress={() => setWholeHouse(false)}
-                style={[styles.chip, !wholeHouse && styles.chipSelected]}
-              >
-                <Text style={[styles.chipText, !wholeHouse && styles.chipTextSelected]}>Mine</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: wholeHouse }}
-                onPress={() => setWholeHouse(true)}
-                style={[styles.chip, wholeHouse && styles.chipSelected]}
-              >
-                <Text style={[styles.chipText, wholeHouse && styles.chipTextSelected]}>Whole house</Text>
-              </Pressable>
+              {choices.map((choice) => {
+                const selected = choice.key === selectedChoice.key;
+                return (
+                  <Pressable
+                    key={choice.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => setChoiceKey(choice.key)}
+                    style={[styles.chip, selected && styles.chipSelected]}
+                  >
+                    <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{choice.label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
             <Pressable
               accessibilityRole="button"
@@ -518,8 +541,9 @@ const styles = StyleSheet.create({
   },
   chipRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     marginTop: 10,
-    marginBottom: 12,
+    marginBottom: 4,
   },
   chip: {
     paddingVertical: 7,
@@ -527,6 +551,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: colors.surfaceMuted,
     marginRight: 8,
+    marginBottom: 8,
   },
   chipSelected: {
     backgroundColor: colors.primarySoft,
