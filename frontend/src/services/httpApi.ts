@@ -3,6 +3,7 @@
 // Everything except sign up and sign in needs the token from signUp/signIn.
 import { API_URL } from '../config';
 import { CHORE_ITEM_MAX_LENGTH, ChoreItem, ChoreList, NewChoreList } from '../types/chores';
+import { EXPENSE_MAX_CENTS, EXPENSE_TITLE_MAX_LENGTH, Expense, NewExpense } from '../types/expenses';
 import { sortMembers } from '../utils/members';
 import {
   AuthUser,
@@ -220,7 +221,9 @@ export async function getMembers(token: string, inviteCode: string): Promise<Hou
     list.flatMap((item) => {
       const u = (item ?? {}) as Record<string, unknown>;
       if (typeof u.username !== 'string') return [];
-      return [{ username: u.username, role: u.role === 'owner' ? 'owner' : 'member' } as HouseholdMember];
+      const member: HouseholdMember = { username: u.username, role: u.role === 'owner' ? 'owner' : 'member' };
+      if (typeof u.id === 'string') member.id = u.id;
+      return [member];
     }),
   );
 }
@@ -384,3 +387,64 @@ export async function setChoreItemDone(token: string, itemId: string, isDone: bo
 export async function deleteChoreItem(token: string, itemId: string): Promise<void> {
   await request('DELETE', `/chores/items/${enc(itemId)}`, { token });
 }
+
+// ---- Expenses ---------------------------------------------------------------------------------
+
+// Accept what the server sends and return exactly the Expense the UI expects.
+export function parseExpense(raw: unknown): Expense {
+  const e = (raw ?? {}) as Record<string, unknown>;
+  const splits = Array.isArray(e.splits) ? e.splits : [];
+  return {
+    id: String(e.id ?? ''),
+    title: String(e.title ?? ''),
+    amountCents: Number(e.amountCents ?? 0),
+    createdAt: typeof e.createdAt === 'string' ? e.createdAt : new Date(0).toISOString(),
+    paidByUsername: String(e.paidByUsername ?? ''),
+    splits: splits.map((item) => {
+      const s = (item ?? {}) as Record<string, unknown>;
+      return {
+        userId: String(s.userId ?? ''),
+        username: String(s.username ?? ''),
+        amountCents: Number(s.amountCents ?? 0),
+        isPaid: s.isPaid === true,
+      };
+    }),
+  };
+}
+
+export async function getExpenses(token: string, inviteCode: string): Promise<Expense[]> {
+  const data = await request('GET', `/conversations/${enc(inviteCode)}/expenses`, { token });
+  return Array.isArray(data?.expenses) ? data.expenses.map(parseExpense) : [];
+}
+
+// The signed-in user is the one who paid. The server saves one share per person and marks the
+// payer's own share as already paid.
+export async function createExpense(token: string, inviteCode: string, input: NewExpense): Promise<Expense> {
+  const title = input.title.trim();
+  if (
+    title.length < 1 || title.length > EXPENSE_TITLE_MAX_LENGTH ||
+    !Number.isInteger(input.amountCents) || input.amountCents < 1 || input.amountCents > EXPENSE_MAX_CENTS
+  ) {
+    throw new MessagingError('INVALID_INPUT', 'Title and a positive amount are required.');
+  }
+  const data = await request('POST', `/conversations/${enc(inviteCode)}/expenses`, {
+    token,
+    body: {
+      title,
+      amountCents: input.amountCents,
+      splits: input.splits.map((split) => ({ userId: split.userId, amountCents: split.amountCents })),
+    },
+  });
+  const saved = parseExpense(data?.expense);
+  // The server's reply doesn't repeat who each share belongs to, so fill that in from what we sent.
+  return {
+    ...saved,
+    splits: input.splits.map((split) => ({
+      userId: split.userId,
+      username: split.username,
+      amountCents: split.amountCents,
+      isPaid: split.username.trim().toLowerCase() === saved.paidByUsername.trim().toLowerCase(),
+    })),
+  };
+}
+

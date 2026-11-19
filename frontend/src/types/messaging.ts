@@ -46,6 +46,8 @@ export type ConversationSummary = {
 
 // One person in a household, as GET /conversations/:inviteCode/users describes them.
 export type HouseholdMember = {
+  // The person's account id. Splitting an expense needs it; a server that doesn't send it yet leaves it out.
+  id?: string;
   username: string;
   role: 'owner' | 'member';
 };

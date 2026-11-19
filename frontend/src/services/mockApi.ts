@@ -8,6 +8,7 @@ import {
   type ChoreList,
   type NewChoreList,
 } from '../types/chores';
+import { EXPENSE_MAX_CENTS, EXPENSE_TITLE_MAX_LENGTH, type Expense, type NewExpense } from '../types/expenses';
 import {
   type ConversationSummary,
   HOUSEHOLD_NAME_MAX_LENGTH,
@@ -38,6 +39,7 @@ type House = {
   members: string[];
   messages: Message[];
   choreLists: ChoreList[];
+  expenses: Expense[];
 };
 
 const accounts = new Map<string, Account>(); // lowercase username -> account
@@ -54,6 +56,7 @@ houses.set('DEMO12', {
   name: 'Demo household',
   owner: 'Austin ligmarche',
   members: ['Austin ligmarche'],
+  expenses: [],
   // A sample list so the Chores tab isn't empty in fake-data mode.
   choreLists: [
     {
@@ -80,6 +83,11 @@ houses.set('DEMO12', {
     },
   ],
 });
+
+// A person's account id. People who only exist as seed data (not real accounts) get a made-up one.
+function memberId(username: string): string {
+  return accounts.get(username.toLowerCase())?.id ?? `seed-${username.toLowerCase()}`;
+}
 
 function delay(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, FAKE_NETWORK_DELAY_MS));
@@ -184,6 +192,7 @@ export async function createConversation(token: string): Promise<string> {
     members: [account.username],
     messages: [],
     choreLists: [],
+    expenses: [],
   });
   return inviteCode;
 }
@@ -203,7 +212,11 @@ export async function getMembers(token: string, inviteCode: string): Promise<Hou
   await delay();
   const house = memberHouse(accountFor(token), inviteCode);
   return sortMembers(
-    house.members.map((username) => ({ username, role: username === house.owner ? 'owner' : 'member' })),
+    house.members.map((username) => ({
+      id: memberId(username),
+      username,
+      role: username === house.owner ? 'owner' : 'member',
+    })),
   );
 }
 
@@ -441,3 +454,58 @@ export async function deleteChoreItem(token: string, itemId: string): Promise<vo
   const { list, item } = findItem(accountFor(token), itemId);
   list.items = list.items.filter((i) => i !== item);
 }
+
+// ---- Expenses ---------------------------------------------------------------------------------
+// Same rules as the real server: members only, the signed-in user is the payer, and the payer's own
+// share starts out paid while everyone else's starts unpaid.
+
+let expenseCounter = 1;
+
+export async function getExpenses(token: string, inviteCode: string): Promise<Expense[]> {
+  await delay();
+  const house = memberHouse(accountFor(token), inviteCode);
+  // Copies, newest first, so callers can't change the fake database by accident.
+  return [...house.expenses]
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .map((expense) => ({ ...expense, splits: expense.splits.map((split) => ({ ...split })) }));
+}
+
+export async function createExpense(token: string, inviteCode: string, input: NewExpense): Promise<Expense> {
+  await delay();
+  const account = accountFor(token);
+  const house = memberHouse(account, inviteCode);
+
+  const title = input.title.trim();
+  if (
+    title.length < 1 || title.length > EXPENSE_TITLE_MAX_LENGTH ||
+    !Number.isInteger(input.amountCents) || input.amountCents < 1 || input.amountCents > EXPENSE_MAX_CENTS
+  ) {
+    throw new MessagingError('INVALID_INPUT', 'Title and a positive amount are required.');
+  }
+
+  const people = new Map(house.members.map((username) => [memberId(username), username]));
+  for (const split of input.splits) {
+    if (!people.has(split.userId) || !Number.isInteger(split.amountCents) || split.amountCents < 0) {
+      throw new MessagingError('INVALID_INPUT', 'Invalid split user IDs or amounts.');
+    }
+  }
+
+  // Strictly later than any earlier expense, so "newest first" is always well defined.
+  const newest = house.expenses.reduce((latest, e) => Math.max(latest, Date.parse(e.createdAt)), 0);
+  const expense: Expense = {
+    id: `expense-${expenseCounter++}-${randomId()}`,
+    title,
+    amountCents: input.amountCents,
+    createdAt: new Date(Math.max(Date.now(), newest + 1)).toISOString(),
+    paidByUsername: account.username,
+    splits: input.splits.map((split) => ({
+      userId: split.userId,
+      username: people.get(split.userId) as string,
+      amountCents: split.amountCents,
+      isPaid: split.userId === account.id,
+    })),
+  };
+  house.expenses.push(expense);
+  return { ...expense, splits: expense.splits.map((split) => ({ ...split })) };
+}
+
