@@ -20,6 +20,15 @@ export function parseAmountToCents(text: string): number | null {
   return cents >= 1 && cents <= EXPENSE_MAX_CENTS ? cents : null;
 }
 
+// Keeps the amount box tidy as someone types: digits and one decimal point only, at most 2 decimals.
+// "12.345" -> "12.34", "1a2.5.6" -> "12.5", "$ 4" -> "4".
+export function sanitizeAmountInput(text: string): string {
+  const kept = text.replace(/[^0-9.]/g, '');
+  const dot = kept.indexOf('.');
+  if (dot === -1) return kept;
+  return kept.slice(0, dot + 1) + kept.slice(dot + 1).replace(/\./g, '').slice(0, 2);
+}
+
 // 125000 -> "$1,250.00"; negative amounts get a leading minus.
 export function formatCents(cents: number): string {
   if (!Number.isFinite(cents)) return '$0.00';

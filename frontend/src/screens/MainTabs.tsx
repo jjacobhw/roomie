@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChatIcon, CheckSquareIcon } from '../components/icons';
+import { CashCoinIcon, ChatIcon, CheckSquareIcon } from '../components/icons';
 import { TabBar, type Tab } from '../components/TabBar';
 import { colors } from '../constants/colors';
 import { useKeyboardVisible } from '../hooks/useKeyboardVisible';
@@ -9,12 +9,14 @@ import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import { badgeText } from '../utils/unread';
 import { ChatScreen } from './ChatScreen';
 import { ChoresScreen } from './ChoresScreen';
+import { ExpensesScreen } from './ExpensesScreen';
 
-type TabKey = 'chat' | 'chores';
+type TabKey = 'chat' | 'chores' | 'expenses';
 
 const TABS: Tab<TabKey>[] = [
   { key: 'chat', label: 'Chat', icon: (props) => <ChatIcon {...props} /> },
   { key: 'chores', label: 'Chores', icon: (props) => <CheckSquareIcon {...props} /> },
+  { key: 'expenses', label: 'Expenses', icon: (props) => <CashCoinIcon {...props} /> },
 ];
 
 type Props = {
@@ -55,6 +57,14 @@ export function MainTabs({ username, token, inviteCode, householdName, onOpenInf
       </View>
       <View style={[styles.screen, tab !== 'chores' && styles.hidden]}>
         <ChoresScreen
+          username={username}
+          token={token}
+          inviteCode={inviteCode}
+          onSessionExpired={onSessionExpired}
+        />
+      </View>
+      <View style={[styles.screen, tab !== 'expenses' && styles.hidden]}>
+        <ExpensesScreen
           username={username}
           token={token}
           inviteCode={inviteCode}

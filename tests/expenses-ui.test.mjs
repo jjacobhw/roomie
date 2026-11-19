@@ -24,7 +24,7 @@ register(
 
 const {
   addExpense, balanceLines, checkSplits, computeBalances, describeShare, expenseSubtitle,
-  formatCents, groupByDay, parseAmountToCents, splitEqually, splitPreview,
+  formatCents, groupByDay, parseAmountToCents, sanitizeAmountInput, splitEqually, splitPreview,
 } = await import('../frontend/src/utils/expenses.ts');
 const api = await import('../frontend/src/services/mockApi.ts');
 
@@ -62,6 +62,19 @@ test('expenses formatCents shows dollars with separators, and formatting then pa
   assert.equal(formatCents(Number.NaN), '$0.00');
   for (let cents = 1; cents <= 99999999; cents = Math.ceil(cents * 1.37) + 1) {
     assert.equal(parseAmountToCents(formatCents(cents)), cents, `${cents}`);
+  }
+});
+
+test('expenses sanitizeAmountInput keeps only digits and one decimal point, with at most 2 decimals', () => {
+  const cases = {
+    '': '', '12': '12', '12.5': '12.5', '12.345': '12.34', '1a2.5.6': '12.56', '$ 4': '4', 'abc': '',
+    '1,000.50': '1000.50', '.': '.', '..5': '.5', '0.999': '0.99', '12.': '12.', '-5': '5',
+  };
+  for (const [typed, kept] of Object.entries(cases)) assert.equal(sanitizeAmountInput(typed), kept, `"${typed}"`);
+  // Whatever it keeps is either empty, still being typed, or a valid amount.
+  for (const typed of ['7', '7.', '7.5', '0.05', '123456.78']) {
+    assert.equal(sanitizeAmountInput(typed), typed);
+    assert.notEqual(parseAmountToCents(sanitizeAmountInput(typed)), null);
   }
 });
 
