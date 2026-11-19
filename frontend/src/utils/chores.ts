@@ -1,4 +1,5 @@
-import { ChoreItem, ChoreList } from '../types/chores';
+import type { ChoreItem, ChoreList } from '../types/chores';
+import type { HouseholdMember } from '../types/messaging';
 
 // Check or uncheck one chore. Checking records who did it and when; unchecking clears both,
 // like the backend does. Returns new lists and never changes the ones passed in.
@@ -53,4 +54,33 @@ export function removeChoreList(lists: ChoreList[], listId: string): ChoreList[]
 
 export function choreProgress(list: ChoreList): { done: number; total: number } {
   return { done: list.items.filter((item) => item.isDone).length, total: list.items.length };
+}
+
+// One option in the New list form's "who is this list for?" row.
+// assignee is the username to send to the server, or null for the whole household.
+export type AssigneeChoice = { key: string; label: string; assignee: string | null };
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// The choices for a new list: Me first, then every other roommate by name (ignoring case),
+// then the whole house. The signed-in user is never listed twice, and `members` is left alone.
+export function assigneeChoices(members: HouseholdMember[], username: string): AssigneeChoice[] {
+  const others: string[] = [];
+  for (const member of members) {
+    if (sameName(member.username, username)) continue;
+    if (others.some((name) => sameName(name, member.username))) continue;
+    others.push(member.username);
+  }
+  others.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  return [
+    { key: 'me', label: 'Me', assignee: username },
+    ...others.map((name) => ({ key: `user:${name}`, label: name, assignee: name })),
+    { key: 'house', label: 'Whole house', assignee: null },
+  ];
+}
+
+// Who a list belongs to, as shown on its badge.
+export function assigneeLabel(list: ChoreList, username: string): string {
+  if (list.assignee === null) return 'Whole house';
+  return sameName(list.assignee, username) ? 'You' : list.assignee;
 }
