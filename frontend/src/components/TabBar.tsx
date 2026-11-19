@@ -13,6 +13,8 @@ export type Tab<K extends string> = {
   label: string;
   // Draws the tab's icon in the color the bar picks (active or inactive).
   icon: (props: { size: number; color: string }) => ReactNode;
+  // Small red count drawn over the icon, like "3" or "9+". Empty or missing: no badge.
+  badge?: string;
 };
 
 type Props<K extends string> = {
@@ -34,13 +36,20 @@ export function TabBar<K extends string>({ tabs, active, onChange, bottomInset =
         return (
           <Pressable
             key={tab.key}
-            accessibilityLabel={tab.label}
+            accessibilityLabel={tab.badge ? `${tab.label}, ${tab.badge} unread` : tab.label}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
             onPress={() => onChange(tab.key)}
             style={styles.tab}
           >
-            {tab.icon({ size: ICON_SIZE, color: selected ? colors.primary : colors.textFaint })}
+            <View>
+              {tab.icon({ size: ICON_SIZE, color: selected ? colors.primary : colors.textFaint })}
+              {tab.badge ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{tab.badge}</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={[styles.label, selected && styles.labelActive]}>{tab.label}</Text>
           </Pressable>
         );
@@ -59,6 +68,23 @@ const styles = StyleSheet.create({
   tab: {
     flex: 1,
     alignItems: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -5,
+    right: -11,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.error,
+  },
+  badgeText: {
+    color: colors.onPrimary,
+    fontSize: 10,
+    fontWeight: '700',
   },
   label: {
     color: colors.textFaint,

@@ -5,6 +5,8 @@ import { ChatIcon, CheckSquareIcon } from '../components/icons';
 import { TabBar, type Tab } from '../components/TabBar';
 import { colors } from '../constants/colors';
 import { useKeyboardVisible } from '../hooks/useKeyboardVisible';
+import { useUnreadMessages } from '../hooks/useUnreadMessages';
+import { badgeText } from '../utils/unread';
 import { ChatScreen } from './ChatScreen';
 import { ChoresScreen } from './ChoresScreen';
 
@@ -33,6 +35,9 @@ export function MainTabs({ username, token, inviteCode, householdName, onOpenInf
   // The phone's status bar (top) and home indicator (bottom). The top padding keeps the screens
   // clear of the status bar; the bottom one is handed to the tab bar so its white fills to the edge.
   const insets = useSafeAreaInsets();
+  // Messages from roommates that arrived while the Chat tab was not open, shown as a badge on it.
+  const unread = useUnreadMessages(token, inviteCode, username, tab === 'chat', onSessionExpired);
+  const tabs = TABS.map((t) => (t.key === 'chat' ? { ...t, badge: badgeText(unread) } : t));
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -58,7 +63,7 @@ export function MainTabs({ username, token, inviteCode, householdName, onOpenInf
       </View>
       {/* Hidden while typing, so it doesn't sit between the keyboard and the text box. */}
       {!keyboardVisible && (
-        <TabBar tabs={TABS} active={tab} onChange={setTab} bottomInset={insets.bottom} />
+        <TabBar tabs={tabs} active={tab} onChange={setTab} bottomInset={insets.bottom} />
       )}
     </View>
   );
