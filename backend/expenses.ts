@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import type { Pool } from 'pg';
+import { authenticated, routeParam, UUID_PATTERN } from './routes';
 
 export interface HouseExpense {
   id: string;
@@ -378,18 +379,46 @@ export async function updateRoommateExpensePaid(
  * @param pool The database pool.
  * @param id ID of the expense to delete.
  */
-export async function deleteHouseExpense(pool: Pool, id: string): Promise<void> {
+export async function deleteHouseExpense(
+  pool: Pool,
+  id: string,
+  userId: string
+): Promise<'deleted' | 'not_found' | 'forbidden'> {
+  const client = await pool.connect();
   try {
-    await pool.query(
-      `DELETE FROM household_expenses WHERE id = $1`,
+    await client.query('BEGIN');
+
+    // SCHEMA NEEDS TO BE PUT IN HERE:
+    // Verify the column tracking the creator/payer (e.g., `created_by` or `paid_by`) on `household_expenses`.
+    const check = await client.query<{ creatorId: string }>(
+      `SELECT created_by AS "creatorId"
+       FROM household_expenses
+       WHERE id = $1
+       FOR UPDATE`,
       [id]
     );
-    await pool.query(
-      `DELETE FROM roommate_expenses WHERE id = $1`,
-      [id]
-    );
+
+    if (check.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return 'not_found';
+    }
+
+    if (check.rows[0].creatorId !== userId) {
+      await client.query('ROLLBACK');
+      return 'forbidden';
+    }
+
+    // SCHEMA NEEDS TO BE PUT IN HERE: verify `household_expenses` and `roommate_expenses` table names
+    await client.query(`DELETE FROM roommate_expenses WHERE id = $1`, [id]);
+    await client.query(`DELETE FROM household_expenses WHERE id = $1`, [id]);
+
+    await client.query('COMMIT');
+    return 'deleted';
   } catch (error) {
-    console.error(`Unable to delete house expense ${id}.`, error);
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -461,8 +490,26 @@ export function registerExpenseRoutes(app: Express, pool: Pool): void {
     response.json(expense);
   });
 
-  app.delete('/houseexpenses/:id', async (request: Request, response: Response) => {
-    await deleteHouseExpense(pool, pathValue(request.params.id));
+  const handleDeleteExpense = authenticated(pool, async (request, response) => {
+    const id = routeParam(request, 'id');
+    if (!UUID_PATTERN.test(id)) {
+      response.status(400).json({ error: 'Invalid expense ID.' });
+      return;
+    }
+
+    const result = await deleteHouseExpense(pool, id, request.authUser.id);
+    if (result === 'not_found') {
+      response.status(404).json({ error: 'Expense not found.' });
+      return;
+    }
+    if (result === 'forbidden') {
+      response.status(403).json({ error: 'You can only delete expenses you created.' });
+      return;
+    }
+
     response.status(204).end();
   });
+
+  app.delete('/houseexpenses/:id', handleDeleteExpense);
+  app.delete('/expenses/:id', handleDeleteExpense);
 }

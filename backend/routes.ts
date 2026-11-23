@@ -157,9 +157,9 @@ async function createSession(pool: Pool, userId: string): Promise<string> {
 async function listUsersInConversation(
   pool: Pool,
   inviteCode: string
-): Promise<{ exists: boolean; users: Array<{ username: string; role: string }> }> {
-  const result = await pool.query<{ username: string | null; role: string | null }>(
-    `SELECT u.display_name AS username, hm.role
+): Promise<{ exists: boolean; users: Array<{ id: string; username: string; role: string }> }> {
+  const result = await pool.query<{ id: string | null; username: string | null; role: string | null }>(
+    `SELECT u.id, u.display_name AS username, hm.role
      FROM households h
      LEFT JOIN household_members hm ON hm.household_id = h.id
      LEFT JOIN users u ON u.id = hm.user_id
@@ -171,8 +171,8 @@ async function listUsersInConversation(
   return {
     exists: result.rows.length > 0,
     users: result.rows.filter(
-      (row): row is { username: string; role: string } =>
-        row.username !== null && row.role !== null
+      (row): row is { id: string; username: string; role: string } =>
+        row.id !== null && row.username !== null && row.role !== null
     ),
   };
 }
