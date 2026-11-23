@@ -1,7 +1,23 @@
 import { once } from 'node:events';
-import { createRequire } from 'node:module';
+import { createRequire, register } from 'node:module';
 
-import { registerExpenseRoutes } from '../backend/expenses.ts';
+register(
+  'data:text/javascript,' + encodeURIComponent(`
+    export async function resolve(specifier, context, next) {
+      try {
+        return await next(specifier, context);
+      } catch (error) {
+        const fromTs = context.parentURL && context.parentURL.endsWith('.ts');
+        if (fromTs && /^\\.{1,2}\\//.test(specifier) && !/\\.[a-z]+$/i.test(specifier)) {
+          return next(specifier + '.ts', context);
+        }
+        throw error;
+      }
+    }
+  `)
+);
+
+const { registerExpenseRoutes } = await import('../backend/expenses.ts');
 
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
 const express = require('express');

@@ -84,8 +84,14 @@ export async function withChoreApi(run, scenario = {}) {
       return { rows: [{ id: NEW_LIST_ID, createdAt: FIXED_DATE }], rowCount: 1 };
     }
     if (/AS "isMember"\s+FROM chore_lists/i.test(sql)) {
-      const found = storedLists.some((list) => list.id === params[0]);
-      return { rows: found ? [{ isMember: true }] : [], rowCount: found ? 1 : 0 };
+      const found = storedLists.find((list) => list.id === params[0]);
+      return { rows: found ? [{ isMember: true, assignedTo: found.assignedTo }] : [], rowCount: found ? 1 : 0 };
+    }
+    if (/FROM chore_items ci JOIN chore_lists cl/i.test(sql)) {
+      const itemId = String(params[0]);
+      const itemListId = itemId === '42' ? NEW_LIST_ID : null;
+      const found = storedLists.find((list) => list.id === itemListId);
+      return { rows: found ? [{ isMember: true, assignedTo: found.assignedTo }] : [], rowCount: found ? 1 : 0 };
     }
     if (/INSERT INTO chore_items/i.test(sql)) {
       const row = { id: '42', text: params[1], isDone: false, doneBy: null, doneAt: null, createdAt: FIXED_DATE };

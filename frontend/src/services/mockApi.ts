@@ -359,6 +359,12 @@ function findItem(account: Account, itemId: string): { list: ChoreList; item: Ch
   throw new MessagingError('CONVERSATION_NOT_FOUND', 'Chore item not found.');
 }
 
+function ensureCanManageChores(account: Account, list: ChoreList): void {
+  if (list.assignee !== null && list.assignee.toLowerCase() !== account.username.toLowerCase()) {
+    throw new MessagingError('NOT_A_MEMBER', 'You can only manage your own chores.');
+  }
+}
+
 export async function getChoreLists(token: string, inviteCode: string): Promise<ChoreList[]> {
   await delay();
   const house = memberHouse(accountFor(token), inviteCode);
@@ -404,12 +410,15 @@ export async function createChoreList(token: string, inviteCode: string, input: 
 export async function deleteChoreList(token: string, listId: string): Promise<void> {
   await delay();
   const { house, list } = listAndHouse(accountFor(token), listId);
+  ensureCanManageChores(accountFor(token), list);
   house.choreLists = house.choreLists.filter((l) => l !== list);
 }
 
 export async function createChoreItem(token: string, listId: string, text: string): Promise<ChoreItem> {
   await delay();
-  const { list } = listAndHouse(accountFor(token), listId);
+  const account = accountFor(token);
+  const { list } = listAndHouse(account, listId);
+  ensureCanManageChores(account, list);
   const body = text.trim();
   if (body.length < 1 || body.length > CHORE_ITEM_MAX_LENGTH) {
     throw new MessagingError('INVALID_INPUT', `text must be between 1 and ${CHORE_ITEM_MAX_LENGTH} characters.`);
@@ -429,7 +438,8 @@ export async function createChoreItem(token: string, listId: string, text: strin
 export async function setChoreItemDone(token: string, itemId: string, isDone: boolean): Promise<ChoreItem> {
   await delay();
   const account = accountFor(token);
-  const { item } = findItem(account, itemId);
+  const { list, item } = findItem(account, itemId);
+  ensureCanManageChores(account, list);
   item.isDone = isDone;
   item.doneBy = isDone ? account.username : null;
   item.doneAt = isDone ? new Date().toISOString() : null;
@@ -438,6 +448,8 @@ export async function setChoreItemDone(token: string, itemId: string, isDone: bo
 
 export async function deleteChoreItem(token: string, itemId: string): Promise<void> {
   await delay();
-  const { list, item } = findItem(accountFor(token), itemId);
+  const account = accountFor(token);
+  const { list, item } = findItem(account, itemId);
+  ensureCanManageChores(account, list);
   list.items = list.items.filter((i) => i !== item);
 }
