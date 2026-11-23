@@ -61,18 +61,14 @@ test('US-3-T-8 creating a chore list for yourself or for the whole house sends n
   });
 });
 
-test('US-3-T-8 adding an item to a roommate\'s list notifies only that roommate', async () => {
+test('US-3-T-8 adding an item to a roommate\'s list is denied and sends no notification', async () => {
   await withChoreApi(async (api) => {
     const response = await api.post(`/chores/${BOBS_LIST.id}/items`, { text: 'Take out trash' });
     await api.settle();
 
-    assert.equal(response.status, 201);
-    assert.deepEqual(api.sentMessages().map(({ to, title, body, data }) => ({ to, title, body, data })), [{
-      to: tokenFor(users.bob),
-      title: "New chore in bob's chores",
-      body: 'alice: Take out trash',
-      data: { type: 'chore', listId: BOBS_LIST.id },
-    }]);
+    assert.equal(response.status, 403);
+    assert.deepEqual(response.body, { error: 'You can only manage your own chores.' });
+    assert.deepEqual(api.sentMessages(), []);
   }, { lists: [BOBS_LIST] });
 });
 
@@ -97,10 +93,11 @@ test('US-3-T-8 adding an item to your own list sends no notification', async () 
     assert.equal(response.status, 201);
     assert.deepEqual(api.sentMessages(), []);
 
-    // Same request on a roommate's list: the notification does go out.
-    await api.post(`/chores/${BOBS_LIST.id}/items`, { text: 'Vacuum' });
+    // Mutating a roommate's list is denied, so it sends no notification.
+    const denied = await api.post(`/chores/${BOBS_LIST.id}/items`, { text: 'Vacuum' });
     await api.settle();
-    assert.deepEqual(api.sentMessages().map((m) => m.to), [tokenFor(users.bob)]);
+    assert.equal(denied.status, 403);
+    assert.deepEqual(api.sentMessages(), []);
   }, { lists: [ALICES_LIST, BOBS_LIST] });
 });
 
@@ -140,10 +137,10 @@ test('US-3-T-8 other Expo errors do not remove any token', async () => {
 async function itemResponse(scenario) {
   let result;
   await withChoreApi(async (api) => {
-    result = await api.post(`/chores/${BOBS_LIST.id}/items`, { text: 'Dishes' });
+    result = await api.post(`/chores/${SHARED_LIST.id}/items`, { text: 'Dishes' });
     await api.settle();
     result.expoCalls = api.expoRequests.length;
-  }, { lists: [BOBS_LIST], ...scenario });
+  }, { lists: [SHARED_LIST], ...scenario });
   return result;
 }
 
@@ -168,10 +165,10 @@ test('US-3-T-8 requests to Expo carry the access token when EXPO_ACCESS_TOKEN is
   process.env.EXPO_ACCESS_TOKEN = 'secret-for-test';
   try {
     await withChoreApi(async (api) => {
-      await api.post(`/chores/${BOBS_LIST.id}/items`, { text: 'Laundry' });
+      await api.post(`/chores/${SHARED_LIST.id}/items`, { text: 'Laundry' });
       await api.settle();
       assert.equal(api.expoRequests[0].headers.Authorization, 'Bearer secret-for-test');
-    }, { lists: [BOBS_LIST] });
+    }, { lists: [SHARED_LIST] });
   } finally {
     delete process.env.EXPO_ACCESS_TOKEN;
   }
