@@ -84,3 +84,9 @@ export function assigneeLabel(list: ChoreList, username: string): string {
   if (list.assignee === null) return 'Whole house';
   return sameName(list.assignee, username) ? 'You' : list.assignee;
 }
+
+// Whether the signed-in user may mutate this list, without exposing mutation controls
+// for chore lists assigned to another roommate.
+export function canManageChoreList(list: ChoreList, username: string): boolean {
+  return list.assignee === null || sameName(list.assignee, username);
+}

@@ -90,6 +90,13 @@ return `204`.
 | Mark chore complete/incomplete | `PATCH /chores/items/:itemId` with `{"isDone":true}` or `{"isDone":false}` |
 | Delete chore | `DELETE /chores/items/:itemId` |
 
+Chore mutations enforce ownership: a user may mutate only lists assigned to
+their account or whole-house lists (`assignee: null`). A member may still create
+a list assigned to another roommate, but mutation of that list is denied to
+everyone except the assignee. Other members can still view all household
+chores. Attempting a denied mutation returns HTTP `403` with
+`{"error":"You can only manage your own chores."}`.
+
 The upload flow is a signed-URL workflow: the server creates a pending
 attachment row, the client `PUT`s raw bytes to the returned `uploadUrl`, and then
 calls `POST /attachments/:attachmentId/complete` to finalize it. The server never
@@ -166,6 +173,38 @@ curl -i -X POST http://localhost:3000/conversations/<INVITE_CODE>/members \
   -H 'Authorization: Bearer <MEMBER_TOKEN>'
 curl -i http://localhost:3000/conversations/<INVITE_CODE>/users \
   -H 'Authorization: Bearer <OWNER_TOKEN>'
+
+# Create an owner-assigned list and add, complete, reopen, and delete a chore.
+curl -i -X POST http://localhost:3000/conversations/<INVITE_CODE>/chores \
+  -H 'Authorization: Bearer <OWNER_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Owner chores","assignee":"roomie-owner-test"}'
+curl -i -X POST http://localhost:3000/chores/<LIST_ID>/items \
+  -H 'Authorization: Bearer <OWNER_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Take out the trash"}'
+curl -i -X PATCH http://localhost:3000/chores/items/<ITEM_ID> \
+  -H 'Authorization: Bearer <OWNER_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"isDone":true}'
+curl -i -X PATCH http://localhost:3000/chores/items/<ITEM_ID> \
+  -H 'Authorization: Bearer <OWNER_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"isDone":false}'
+curl -i -X DELETE http://localhost:3000/chores/items/<ITEM_ID> \
+  -H 'Authorization: Bearer <OWNER_TOKEN>'
+
+# Create a whole-house list. Either member can manage it.
+curl -i -X POST http://localhost:3000/conversations/<INVITE_CODE>/chores \
+  -H 'Authorization: Bearer <OWNER_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Shared chores","assignee":null}'
+
+# A member trying to mutate an owner-assigned list is denied with HTTP 403.
+curl -i -X POST http://localhost:3000/chores/<OWNER_LIST_ID>/items \
+  -H 'Authorization: Bearer <MEMBER_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Not allowed"}'
 
 # Send a message, then read it back.
 curl -i -X POST http://localhost:3000/messages/<INVITE_CODE> \

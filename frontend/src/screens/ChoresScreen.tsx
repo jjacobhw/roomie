@@ -16,7 +16,7 @@ import { useChores } from '../hooks/useChores';
 import { getMembers } from '../services/messagingApi';
 import { CHORE_ITEM_MAX_LENGTH, CHORE_TITLE_MAX_LENGTH, ChoreList } from '../types/chores';
 import type { HouseholdMember } from '../types/messaging';
-import { assigneeChoices, assigneeLabel, choreProgress } from '../utils/chores';
+import { assigneeChoices, assigneeLabel, canManageChoreList, choreProgress } from '../utils/chores';
 import { confirmAction } from '../utils/confirm';
 
 type Props = {
@@ -156,6 +156,7 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
           {lists.map((list) => {
             const { done, total } = choreProgress(list);
             const draft = drafts[list.id] ?? '';
+            const canManage = canManageChoreList(list, username);
             return (
               <View key={list.id} style={styles.card}>
                 <View style={styles.cardHeader}>
@@ -178,16 +179,27 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
 
                 {list.items.map((item) => (
                   <View key={item.id} style={styles.itemRow}>
-                    <Pressable
-                      accessibilityLabel={`${item.text}, ${item.isDone ? 'done' : 'not done'}`}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: item.isDone }}
-                      onPress={() => handleToggle(item.id, !item.isDone)}
-                      style={styles.itemMain}
-                    >
-                      <View style={[styles.checkbox, item.isDone && styles.checkboxChecked]}>
-                        {item.isDone && <Text style={styles.checkmark}>✓</Text>}
-                      </View>
+                    {canManage ? (
+                      <Pressable
+                        accessibilityLabel={`${item.text}, ${item.isDone ? 'done' : 'not done'}`}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: item.isDone }}
+                        onPress={() => handleToggle(item.id, !item.isDone)}
+                        style={styles.itemMain}
+                      >
+                        <View style={[styles.checkbox, item.isDone && styles.checkboxChecked]}>
+                          {item.isDone && <Text style={styles.checkmark}>✓</Text>}
+                        </View>
+                        <View style={styles.itemCopy}>
+                          <Text style={[styles.itemText, item.isDone && styles.itemTextDone]}>{item.text}</Text>
+                          {item.isDone && item.doneBy && item.doneAt && (
+                            <Text style={styles.itemMeta}>
+                              Done by {item.doneBy === username ? 'you' : item.doneBy} at {formatTime(item.doneAt)}
+                            </Text>
+                          )}
+                        </View>
+                      </Pressable>
+                    ) : (
                       <View style={styles.itemCopy}>
                         <Text style={[styles.itemText, item.isDone && styles.itemTextDone]}>{item.text}</Text>
                         {item.isDone && item.doneBy && item.doneAt && (
@@ -196,51 +208,57 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
                           </Text>
                         )}
                       </View>
-                    </Pressable>
-                    <Pressable
-                      accessibilityLabel={`Delete ${item.text}`}
-                      accessibilityRole="button"
-                      hitSlop={8}
-                      onPress={() => handleDeleteItem(item.id)}
-                      style={styles.removeButton}
-                    >
-                      <Text style={styles.removeButtonText}>✕</Text>
-                    </Pressable>
+                    )}
+                    {canManage && (
+                      <Pressable
+                        accessibilityLabel={`Delete ${item.text}`}
+                        accessibilityRole="button"
+                        hitSlop={8}
+                        onPress={() => handleDeleteItem(item.id)}
+                        style={styles.removeButton}
+                      >
+                        <Text style={styles.removeButtonText}>✕</Text>
+                      </Pressable>
+                    )}
                   </View>
                 ))}
 
-                <View style={styles.addRow}>
-                  <TextInput
-                    accessibilityLabel={`Add a chore to ${list.title}`}
-                    maxLength={CHORE_ITEM_MAX_LENGTH}
-                    onChangeText={(text) => setDrafts((current) => ({ ...current, [list.id]: text }))}
-                    onSubmitEditing={() => handleAddItem(list.id)}
-                    placeholder="Add a chore..."
-                    placeholderTextColor={colors.textFaint}
-                    returnKeyType="done"
-                    style={styles.addInput}
-                    value={draft}
-                  />
-                  <Pressable
-                    accessibilityLabel="Add chore"
-                    accessibilityRole="button"
-                    disabled={draft.trim() === ''}
-                    onPress={() => handleAddItem(list.id)}
-                    style={[styles.addButton, draft.trim() === '' && styles.addButtonDisabled]}
-                  >
-                    <Text style={styles.addButtonText}>+</Text>
-                  </Pressable>
-                </View>
+                {canManage && (
+                  <>
+                    <View style={styles.addRow}>
+                      <TextInput
+                        accessibilityLabel={`Add a chore to ${list.title}`}
+                        maxLength={CHORE_ITEM_MAX_LENGTH}
+                        onChangeText={(text) => setDrafts((current) => ({ ...current, [list.id]: text }))}
+                        onSubmitEditing={() => handleAddItem(list.id)}
+                        placeholder="Add a chore..."
+                        placeholderTextColor={colors.textFaint}
+                        returnKeyType="done"
+                        style={styles.addInput}
+                        value={draft}
+                      />
+                      <Pressable
+                        accessibilityLabel="Add chore"
+                        accessibilityRole="button"
+                        disabled={draft.trim() === ''}
+                        onPress={() => handleAddItem(list.id)}
+                        style={[styles.addButton, draft.trim() === '' && styles.addButtonDisabled]}
+                      >
+                        <Text style={styles.addButtonText}>+</Text>
+                      </Pressable>
+                    </View>
 
-                <Pressable
-                  accessibilityLabel={`Delete list ${list.title}`}
-                  accessibilityRole="button"
-                  hitSlop={8}
-                  onPress={() => handleDeleteList(list)}
-                  style={styles.deleteListButton}
-                >
-                  <Text style={styles.deleteListText}>Delete list</Text>
-                </Pressable>
+                    <Pressable
+                      accessibilityLabel={`Delete list ${list.title}`}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                      onPress={() => handleDeleteList(list)}
+                      style={styles.deleteListButton}
+                    >
+                      <Text style={styles.deleteListText}>Delete list</Text>
+                    </Pressable>
+                  </>
+                )}
               </View>
             );
           })}

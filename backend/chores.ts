@@ -95,8 +95,9 @@ function sendAccessError(
  */
 async function listAccess(pool: Pool, listId: string, userId: string) {
   if (!UUID_PATTERN.test(listId)) return 'not_found' as const;
-  const result = await pool.query<{ isMember: boolean }>(
-    `SELECT EXISTS (
+  const result = await pool.query<{ isMember: boolean; assignedTo: string | null }>(
+    `SELECT cl.assigned_to::text AS "assignedTo",
+            EXISTS (
        SELECT 1 FROM household_members hm
        WHERE hm.household_id = cl.household_id AND hm.user_id = $2
      ) AS "isMember"
@@ -104,7 +105,10 @@ async function listAccess(pool: Pool, listId: string, userId: string) {
     [listId, userId]
   );
   if (result.rows.length === 0) return 'not_found' as const;
-  return result.rows[0].isMember ? ('member' as const) : ('not_member' as const);
+  return {
+    access: result.rows[0].isMember ? ('member' as const) : ('not_member' as const),
+    assignedTo: result.rows[0].assignedTo,
+  };
 }
 
 /**
@@ -117,8 +121,9 @@ async function listAccess(pool: Pool, listId: string, userId: string) {
  */
 async function itemAccess(pool: Pool, itemId: string, userId: string) {
   if (!ITEM_ID_PATTERN.test(itemId)) return 'not_found' as const;
-  const result = await pool.query<{ isMember: boolean }>(
-    `SELECT EXISTS (
+  const result = await pool.query<{ isMember: boolean; assignedTo: string | null }>(
+    `SELECT cl.assigned_to::text AS "assignedTo",
+            EXISTS (
        SELECT 1 FROM household_members hm
        WHERE hm.household_id = cl.household_id AND hm.user_id = $2
      ) AS "isMember"
@@ -127,7 +132,10 @@ async function itemAccess(pool: Pool, itemId: string, userId: string) {
     [itemId, userId]
   );
   if (result.rows.length === 0) return 'not_found' as const;
-  return result.rows[0].isMember ? ('member' as const) : ('not_member' as const);
+  return {
+    access: result.rows[0].isMember ? ('member' as const) : ('not_member' as const),
+    assignedTo: result.rows[0].assignedTo,
+  };
 }
 
 function notFound(response: Response, what: string): void {
@@ -136,6 +144,10 @@ function notFound(response: Response, what: string): void {
 
 function forbidden(response: Response): void {
   response.status(403).json({ error: 'User is not a member of this conversation.' });
+}
+
+function ownChoresForbidden(response: Response): void {
+  response.status(403).json({ error: 'You can only manage your own chores.' });
 }
 
 /**
@@ -298,7 +310,10 @@ export function registerChoreRoutes(app: Express, pool: Pool): void {
     const listId = routeParam(request, 'listId');
     const access = await listAccess(pool, listId, request.authUser.id);
     if (access === 'not_found') return notFound(response, 'Chore list');
-    if (access === 'not_member') return forbidden(response);
+    if (access.access === 'not_member') return forbidden(response);
+    if (access.assignedTo !== null && access.assignedTo !== request.authUser.id) {
+      return ownChoresForbidden(response);
+    }
 
     await pool.query('DELETE FROM chore_lists WHERE id = $1', [listId]);
     response.status(204).end();
@@ -308,7 +323,10 @@ export function registerChoreRoutes(app: Express, pool: Pool): void {
     const listId = routeParam(request, 'listId');
     const access = await listAccess(pool, listId, request.authUser.id);
     if (access === 'not_found') return notFound(response, 'Chore list');
-    if (access === 'not_member') return forbidden(response);
+    if (access.access === 'not_member') return forbidden(response);
+    if (access.assignedTo !== null && access.assignedTo !== request.authUser.id) {
+      return ownChoresForbidden(response);
+    }
 
     const body: unknown = request.body;
     const text = isRecord(body) && typeof body.text === 'string' ? body.text.trim() : '';
@@ -338,7 +356,10 @@ export function registerChoreRoutes(app: Express, pool: Pool): void {
 
     const access = await itemAccess(pool, itemId, request.authUser.id);
     if (access === 'not_found') return notFound(response, 'Chore item');
-    if (access === 'not_member') return forbidden(response);
+    if (access.access === 'not_member') return forbidden(response);
+    if (access.assignedTo !== null && access.assignedTo !== request.authUser.id) {
+      return ownChoresForbidden(response);
+    }
 
     const result = await pool.query(
       `WITH updated AS (
@@ -361,7 +382,10 @@ export function registerChoreRoutes(app: Express, pool: Pool): void {
     const itemId = routeParam(request, 'itemId');
     const access = await itemAccess(pool, itemId, request.authUser.id);
     if (access === 'not_found') return notFound(response, 'Chore item');
-    if (access === 'not_member') return forbidden(response);
+    if (access.access === 'not_member') return forbidden(response);
+    if (access.assignedTo !== null && access.assignedTo !== request.authUser.id) {
+      return ownChoresForbidden(response);
+    }
 
     await pool.query('DELETE FROM chore_items WHERE id = $1', [itemId]);
     response.status(204).end();
