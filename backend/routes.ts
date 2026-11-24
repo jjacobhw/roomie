@@ -1011,6 +1011,43 @@ export function registerRoutes(app: Express, pool: Pool): void {
     }
   }));
 
+  // delete an expense (and its splits); only the member who paid for it may delete it
+  app.delete('/conversations/:inviteCode/expenses/:expenseId', authenticated(pool, async (request, response) => {
+    const inviteCode = routeParam(request, 'inviteCode');
+    const expenseId = routeParam(request, 'expenseId');
+    const access = await getConversationAccess(pool, inviteCode, request.authUser.id);
+    if (access !== 'member') {
+      response.status(access === 'not_found' ? 404 : 403).json({
+        error: access === 'not_found' ? 'Conversation not found.' : 'User is not a member of this conversation.',
+      });
+      return;
+    }
+    if (!UUID_PATTERN.test(expenseId)) {
+      response.status(404).json({ error: 'Expense not found.' });
+      return;
+    }
+
+    const found = await pool.query<{ paidBy: string }>(
+      `SELECT e.paid_by AS "paidBy"
+       FROM expenses e
+       JOIN households h ON h.id = e.household_id
+       WHERE e.id = $1 AND h.invite_code = $2`,
+      [expenseId, inviteCode]
+    );
+    if (found.rows.length === 0) {
+      response.status(404).json({ error: 'Expense not found.' });
+      return;
+    }
+    if (found.rows[0].paidBy !== request.authUser.id) {
+      response.status(403).json({ error: 'Only the person who added an expense can delete it.' });
+      return;
+    }
+
+    // expense_splits rows go with it (ON DELETE CASCADE)
+    await pool.query('DELETE FROM expenses WHERE id = $1', [expenseId]);
+    response.status(204).end();
+  }));
+
   registerChoreRoutes(app, pool);
   registerExpenseRoutes(app, pool);
 }
