@@ -37,13 +37,6 @@ export interface Message {
   seenBy?: string[];
 }
 
-export interface Conversation {
-  inviteCode: string;
-  name?: string;
-  messages: Message[];
-  users: string[];
-}
-
 export interface ConversationSummary {
   inviteCode: string;
   name: string;
@@ -476,44 +469,6 @@ export async function joinConversation(
     [household.rows[0].id, userResult.rows[0].id]
   );
   return true;
-}
-
-/**
- * Has no API command.
- * Refresh messages in conversation to the user's screen.
- * @param pgClient The PostgreSQL client to use for the query.
- * @param inviteCode The invite code of the conversation.
- * @returns A promise resolving to the conversation object or null if it does not exist.
- */
-export async function getConversation(
-  pgClient: PgClient,
-  inviteCode: string
-): Promise<Conversation | null> {
-  const household = await pgClient.query<{ id: string; name: string; invite_code: string }>(
-    'SELECT id, name, invite_code FROM households WHERE upper(invite_code) = upper($1) LIMIT 1',
-    [inviteCode]
-  );
-
-  if (household.rows.length === 0) {
-    return null;
-  }
-
-  const messages = await getMessages(pgClient, household.rows[0].invite_code);
-  const members = await pgClient.query<{ display_name: string }>(
-    `SELECT u.display_name
-     FROM household_members hm
-     JOIN users u ON u.id = hm.user_id
-     WHERE hm.household_id = $1
-     ORDER BY u.display_name`,
-    [household.rows[0].id]
-  );
-
-  return {
-    inviteCode: household.rows[0].invite_code,
-    name: household.rows[0].name,
-    users: members.rows.map((row) => row.display_name),
-    messages: messages ?? [],
-  };
 }
 
 /**
