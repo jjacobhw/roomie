@@ -16,8 +16,8 @@ import {
   routeParam,
   UUID_PATTERN,
   type AuthUser,
-} from './routes';
-import { notifyHousehold, notifyUsers } from './notifications';
+} from './routes.ts';
+import { notifyHousehold, notifyUsers } from './notifications.ts';
 
 const MAX_TITLE_LENGTH = 80;
 const MAX_ITEM_LENGTH = 200;

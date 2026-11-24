@@ -4,7 +4,7 @@
 // Sending never blocks or fails the request that caused it: errors are only logged.
 import type { Express } from 'express';
 import type { Pool } from 'pg';
-import { authenticated, isRecord } from './routes';
+import { authenticated, isRecord } from './routes.ts';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_BATCH_SIZE = 100; // Expo accepts at most 100 messages per request

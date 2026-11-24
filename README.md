@@ -65,6 +65,8 @@ return `204`.
 | Create account | `POST /users` with `{"username":"Alex","password":"long-password"}` |
 | Sign in | `POST /sessions` with the same username/password |
 | Sign out | `DELETE /sessions` |
+| Change signed-in username | `PATCH /users/me` with `{"username":"New name"}` |
+| Legacy alias for username change | `PATCH /username` with `{"username":"New name"}` |
 | List conversations | `GET /conversations` (also `GET /convos`) |
 | List messages | `GET /messages/:inviteCode` |
 | List all users | `GET /users` |
@@ -161,6 +163,13 @@ curl -i -X POST http://localhost:3000/sessions \
 curl -i -X POST http://localhost:3000/sessions \
   -H 'Content-Type: application/json' \
   -d '{"username":"roomie-member-test","password":"test-password-456"}'
+
+# Change the signed-in owner's username without changing or replacing its session.
+# Usernames are trimmed, limited to 1-50 characters, and unique case-insensitively.
+curl -i -X PATCH http://localhost:3000/users/me \
+  -H 'Authorization: Bearer <OWNER_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"  roomie-owner-renamed  "}'
 
 # Create a household; copy its inviteCode from the response.
 curl -i -X POST http://localhost:3000/conversations \

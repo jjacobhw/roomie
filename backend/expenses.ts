@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import type { Pool } from 'pg';
-import { authenticated, routeParam, UUID_PATTERN } from './routes';
+import { authenticated, routeParam, UUID_PATTERN } from './routes.ts';
 
 export interface HouseExpense {
   id: string;

@@ -8,14 +8,14 @@
 import { randomUUID } from 'node:crypto';
 import type { Express } from 'express';
 import type { Pool } from 'pg';
-import { authenticated, getConversationAccess, isRecord, routeParam } from './routes';
+import { authenticated, getConversationAccess, isRecord, routeParam } from './routes.ts';
 import {
   UPLOAD_URL_TTL_SECONDS,
   isStorageConfigured,
   objectSize,
   presignDownload,
   presignUpload,
-} from './storage';
+} from './storage.ts';
 
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 

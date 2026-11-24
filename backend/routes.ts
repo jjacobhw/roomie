@@ -21,12 +21,12 @@ import type {
   Response,
 } from 'express';
 import type { Pool } from 'pg';
-import { getConversations, getMessages } from './texting';
-import { publicAttachments, type StoredAttachment } from './storage';
-import { registerChoreRoutes } from './chores';
-import { registerUploadRoutes } from './uploads';
-import { registerNotificationRoutes } from './notifications';
-import { registerExpenseRoutes } from './expenses';
+import { getConversations, getMessages } from './texting.ts';
+import { publicAttachments, type StoredAttachment } from './storage.ts';
+import { registerChoreRoutes } from './chores.ts';
+import { registerUploadRoutes } from './uploads.ts';
+import { registerNotificationRoutes } from './notifications.ts';
+import { registerExpenseRoutes } from './expenses.ts';
 
 const SESSION_LIFETIME_DAYS = 30;
 const MESSAGE_COOLDOWN_MS = 3000;
@@ -392,6 +392,43 @@ export function registerRoutes(app: Express, pool: Pool): void {
     await pool.query('DELETE FROM user_sessions WHERE token_hash = $1', [request.sessionTokenHash]);
     response.status(204).end();
   }));
+
+  const changeUsername: RequestHandler = authenticated(pool, async (request, response) => {
+    const body: unknown = request.body;
+    if (!isRecord(body) || typeof body.username !== 'string') {
+      response.status(400).json({ error: 'username must be a string.' });
+      return;
+    }
+
+    const username = body.username.trim();
+    if (username.length < 1 || username.length > 50) {
+      response.status(400).json({ error: 'username must be between 1 and 50 characters.' });
+      return;
+    }
+
+    try {
+      const result = await pool.query<{ id: string; username: string }>(
+        `UPDATE users
+         SET display_name = $2
+         WHERE id = $1
+         RETURNING id, display_name AS username`,
+        [request.authUser.id, username]
+      );
+      if (result.rows.length === 0) {
+        response.status(401).json({ error: 'Session is invalid or expired.' });
+        return;
+      }
+      response.json({ user: result.rows[0] });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        response.status(409).json({ error: 'Username is already taken.' });
+        return;
+      }
+      throw error;
+    }
+  });
+  app.patch('/users/me', changeUsername);
+  app.patch('/username', changeUsername);
 
   const listConversations: RequestHandler = authenticated(pool, async (_request, response) => {
     response.json({

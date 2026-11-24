@@ -1,29 +1,30 @@
 // Fake backend that keeps everything in memory, so the app runs without a server.
 // It mimics backend/routes.ts: accounts with passwords, tokens, members-only households,
 // one household per user, and a 3-second cooldown per sender. Same functions as httpApi.ts.
+import { CHORE_ITEM_MAX_LENGTH, CHORE_TITLE_MAX_LENGTH } from '../types/chores.ts';
+import type {
+  ChoreItem,
+  ChoreList,
+  NewChoreList,
+} from '../types/chores.ts';
 import {
-  CHORE_ITEM_MAX_LENGTH,
-  CHORE_TITLE_MAX_LENGTH,
-  type ChoreItem,
-  type ChoreList,
-  type NewChoreList,
-} from '../types/chores';
-import {
-  type ConversationSummary,
   HOUSEHOLD_NAME_MAX_LENGTH,
-  type HouseholdMember,
-  type Message,
-  type MessageAttachment,
   MessagingError,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
-  type PickedFile,
-  type Session,
-  type UploadedAttachment,
   USERNAME_MAX_LENGTH,
   checkAttachment,
-} from '../types/messaging';
-import { sortMembers } from '../utils/members';
+} from '../types/messaging.ts';
+import type {
+  ConversationSummary,
+  HouseholdMember,
+  Message,
+  MessageAttachment,
+  PickedFile,
+  Session,
+  UploadedAttachment,
+} from '../types/messaging.ts';
+import { sortMembers } from '../utils/members.ts';
 
 const FAKE_NETWORK_DELAY_MS = 250;
 const COOLDOWN_MS = 3000; // Sprint 1: the server enforces 3s between messages per sender
@@ -42,6 +43,8 @@ type House = {
 
 const accounts = new Map<string, Account>(); // lowercase username -> account
 const sessions = new Map<string, string>(); // token -> lowercase username
+const sessionObjects = new Map<string, Session>(); // token -> returned signed-in session object
+const renamedLoginNames = new Set<string>(); // fake identities keep the pre-rename login name unavailable
 const houses = new Map<string, House>();
 const lastSentAt = new Map<string, number>(); // lowercase username -> time of last message
 // "Uploaded" files waiting to be sent, by id. The picked file's own uri stands in for a download link.
@@ -125,7 +128,9 @@ function memberHouse(account: Account, inviteCode: string): House {
 function startSession(account: Account): Session {
   const token = `${randomId()}${randomId()}${randomId()}`;
   sessions.set(token, account.username.toLowerCase());
-  return { user: { id: account.id, username: account.username }, token };
+  const session: Session = { user: { id: account.id, username: account.username }, token };
+  sessionObjects.set(token, session);
+  return session;
 }
 
 export async function signUp(username: string, password: string): Promise<Session> {
@@ -150,6 +155,9 @@ export async function signUp(username: string, password: string): Promise<Sessio
 
 export async function signIn(username: string, password: string): Promise<Session> {
   await delay();
+  if (renamedLoginNames.has(username.trim().toLowerCase())) {
+    throw new MessagingError('INVALID_CREDENTIALS', 'Invalid username or password.');
+  }
   const account = accounts.get(username.trim().toLowerCase());
   if (!account || account.password !== password) {
     throw new MessagingError('INVALID_CREDENTIALS', 'Invalid username or password.');
@@ -161,7 +169,58 @@ export async function signOut(token: string): Promise<void> {
   await delay();
   accountFor(token);
   sessions.delete(token);
+  sessionObjects.delete(token);
 }
+
+export async function changeUsername(token: string, username: string): Promise<import('../types/messaging.ts').AuthUser> {
+  await delay();
+  const account = accountFor(token);
+  const oldKey = account.username.toLowerCase();
+  const name = username.trim();
+  if (name.length < 1 || name.length > USERNAME_MAX_LENGTH) {
+    throw new MessagingError('INVALID_INPUT', `username must be between 1 and ${USERNAME_MAX_LENGTH} characters.`);
+  }
+  const newKey = name.toLowerCase();
+  const conflict = [...accounts.values()].some(
+    (other) => other.id !== account.id && other.username.toLowerCase() === newKey,
+  );
+  if (conflict) {
+    throw new MessagingError('USERNAME_TAKEN', 'Username is already taken.');
+  }
+  if (newKey !== oldKey) {
+    renamedLoginNames.add(newKey);
+    accounts.delete(oldKey);
+    accounts.set(newKey, account);
+  }
+  account.username = name;
+  for (const [sessionToken, sessionKey] of sessions) {
+    if (sessionKey === oldKey) sessions.set(sessionToken, newKey);
+  }
+  for (const session of sessionObjects.values()) {
+    if (session.user.id === account.id) session.user.username = name;
+  }
+  for (const house of houses.values()) {
+    house.owner = house.owner.toLowerCase() === oldKey ? name : house.owner;
+    house.members = house.members.map((member) => member.toLowerCase() === oldKey ? name : member);
+    for (const message of house.messages) {
+      if (message.username.toLowerCase() === oldKey) message.username = name;
+      message.seenBy = message.seenBy.map((seen) => seen.toLowerCase() === oldKey ? name : seen);
+    }
+    for (const list of house.choreLists) {
+      if (list.assignee?.toLowerCase() === oldKey) list.assignee = name;
+      if (list.createdBy?.toLowerCase() === oldKey) list.createdBy = name;
+      for (const item of list.items) {
+        if (item.doneBy?.toLowerCase() === oldKey) item.doneBy = name;
+      }
+    }
+  }
+  for (const upload of uploads.values()) {
+    if (upload.owner.toLowerCase() === oldKey) upload.owner = name;
+  }
+  return { id: account.id, username: name };
+}
+
+export const renameUsername = changeUsername;
 
 export async function getMyConversation(token: string): Promise<ConversationSummary | null> {
   await delay();
