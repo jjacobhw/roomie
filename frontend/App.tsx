@@ -84,6 +84,12 @@ function AppContent() {
     reset();
   }, [session, reset]);
 
+  const handleUsernameChanged = useCallback((user: Session['user']) => {
+    setSession((current) => current
+      ? { ...current, user: { ...current.user, ...user } }
+      : current);
+  }, []);
+
   if (!session) {
     return <AuthScreen onAuthenticated={handleAuthenticated} />;
   }
@@ -132,6 +138,7 @@ function AppContent() {
       householdName={householdName}
       onOpenInfo={() => setShowInfo(true)}
       onSessionExpired={reset}
+      onUsernameChanged={handleUsernameChanged}
     />
   );
 }

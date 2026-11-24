@@ -10,8 +10,8 @@
 
 import cors from 'cors';
 import express, { type ErrorRequestHandler } from 'express';
-import { pool } from './db';
-import { registerRoutes } from './routes';
+import { pool } from './db.ts';
+import { registerRoutes } from './routes.ts';
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;

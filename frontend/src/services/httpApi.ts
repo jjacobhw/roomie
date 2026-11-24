@@ -1,29 +1,29 @@
 // Talks to the real backend (backend/routes.ts) over HTTP. Same functions as mockApi.ts,
 // so the screens don't know which one they're using.
 // Everything except sign up and sign in needs the token from signUp/signIn.
-import { API_URL } from '../config';
-import { CHORE_ITEM_MAX_LENGTH, ChoreItem, ChoreList, NewChoreList } from '../types/chores';
-import { sortMembers } from '../utils/members';
-import {
+import { API_URL } from '../config.ts';
+import { CHORE_ITEM_MAX_LENGTH } from '../types/chores.ts';
+import type { ChoreItem, ChoreList, NewChoreList } from '../types/chores.ts';
+import { sortMembers } from '../utils/members.ts';
+import { MessagingError, checkAttachment } from '../types/messaging.ts';
+import type {
   AuthUser,
   ConversationSummary,
   HouseholdMember,
   Message,
   MessageAttachment,
-  MessagingError,
   MessagingErrorCode,
   PickedFile,
   Session,
   UploadedAttachment,
-  checkAttachment,
-} from '../types/messaging';
+} from '../types/messaging.ts';
 
 const REQUEST_TIMEOUT_MS = 8000;
 const UPLOAD_TIMEOUT_MS = 60000; // the file itself can be several MB
 
 // Which request failed decides what a status code means (401 on sign in is a wrong password,
 // 401 anywhere else is an expired session).
-type Context = 'signup' | 'signin' | 'send' | 'upload' | 'other';
+type Context = 'signup' | 'signin' | 'send' | 'upload' | 'username' | 'other';
 
 // Turn a failed HTTP response into the same errors the mock throws.
 export function errorFromResponse(
@@ -63,8 +63,8 @@ export function errorFromResponse(
       fallback = 'Household not found';
       break;
     case 409:
-      code = context === 'signup' ? 'USERNAME_TAKEN' : 'ALREADY_IN_CONVERSATION';
-      fallback = context === 'signup' ? 'That username is taken' : 'Already in a household';
+      code = context === 'signup' || context === 'username' ? 'USERNAME_TAKEN' : 'ALREADY_IN_CONVERSATION';
+      fallback = context === 'signup' || context === 'username' ? 'That username is taken' : 'Already in a household';
       break;
     case 429:
       code = 'RATE_LIMITED';
@@ -186,6 +186,21 @@ export async function signIn(username: string, password: string): Promise<Sessio
 export async function signOut(token: string): Promise<void> {
   await request('DELETE', '/sessions', { token });
 }
+
+export async function changeUsername(token: string, username: string): Promise<AuthUser> {
+  const data = await request('PATCH', '/users/me', {
+    token,
+    body: { username },
+    context: 'username',
+  });
+  const saved = data?.user;
+  if (!saved || typeof saved.id !== 'string' || typeof saved.username !== 'string') {
+    throw new MessagingError('SERVER_ERROR', 'The server sent an unexpected username response');
+  }
+  return { id: saved.id, username: saved.username };
+}
+
+export const renameUsername = changeUsername;
 
 // The household this user is already in, or null. Used right after sign in to skip the Join screen.
 export async function getMyConversation(token: string): Promise<ConversationSummary | null> {

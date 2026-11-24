@@ -1,9 +1,9 @@
 // The only messaging module the screens and hooks should import from.
 // It picks the real backend when EXPO_PUBLIC_API_URL is set (see config.ts) and
 // falls back to the in-memory mock otherwise.
-import { USING_MOCK } from '../config';
-import * as http from './httpApi';
-import * as mock from './mockApi';
+import { USING_MOCK } from '../config.ts';
+import * as http from './httpApi.ts';
+import * as mock from './mockApi.ts';
 
 // Both implementations must have the same functions; this line makes TypeScript check it.
 const api: typeof mock = USING_MOCK ? mock : http;
@@ -27,3 +27,5 @@ export const deleteChoreItem = api.deleteChoreItem;
 export const getMembers = api.getMembers;
 export const renameConversation = api.renameConversation;
 export const leaveConversation = api.leaveConversation;
+export const changeUsername = api.changeUsername;
+export const renameUsername = api.renameUsername;

@@ -18,6 +18,8 @@ import { CHORE_ITEM_MAX_LENGTH, CHORE_TITLE_MAX_LENGTH, ChoreList } from '../typ
 import type { HouseholdMember } from '../types/messaging';
 import { assigneeChoices, assigneeLabel, canManageChoreList, choreProgress } from '../utils/chores';
 import { confirmAction } from '../utils/confirm';
+import { ProfileMenu } from '../components/ProfileMenu';
+import type { AuthUser } from '../types/messaging';
 
 type Props = {
   username: string;
@@ -25,6 +27,7 @@ type Props = {
   inviteCode: string;
   // The server says the session is no longer valid.
   onSessionExpired: () => void;
+  onUsernameChanged?: (user: AuthUser) => void;
 };
 
 function formatTime(iso: string): string {
@@ -33,7 +36,13 @@ function formatTime(iso: string): string {
 
 // The household's chore lists, loaded from the server and refreshed every few seconds so a
 // roommate's checkmark shows up here too.
-export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: Props) {
+export function ChoresScreen({
+  username,
+  token,
+  inviteCode,
+  onSessionExpired,
+  onUsernameChanged,
+}: Props) {
   const { lists, loading, loadError, toggle, addItem, createList, removeItem, removeList } = useChores(
     token,
     inviteCode,
@@ -127,9 +136,12 @@ export function ChoresScreen({ username, token, inviteCode, onSessionExpired }: 
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <View style={styles.headerIcon}>
-          <Text style={styles.headerIconText}>R</Text>
-        </View>
+        <ProfileMenu
+          username={username}
+          token={token}
+          onUsernameChanged={onUsernameChanged}
+          onSessionExpired={onSessionExpired}
+        />
         <Text style={styles.headerTitle}>Chores</Text>
       </View>
 
@@ -328,19 +340,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  headerIconText: {
-    color: colors.onPrimary,
-    fontSize: 20,
-    fontWeight: '800',
   },
   headerTitle: {
     flex: 1,

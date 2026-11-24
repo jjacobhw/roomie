@@ -18,6 +18,8 @@ import { useConversation } from '../hooks/useConversation';
 import { colors } from '../constants/colors';
 import { latestAlert } from '../utils/messages';
 import { USING_MOCK } from '../config';
+import { ProfileMenu } from '../components/ProfileMenu';
+import type { AuthUser } from '../types/messaging';
 
 type Props = {
   username: string;
@@ -29,9 +31,18 @@ type Props = {
   onOpenInfo: () => void;
   // The server says the session is no longer valid.
   onSessionExpired: () => void;
+  onUsernameChanged?: (user: AuthUser) => void;
 };
 
-export function ChatScreen({ username, token, inviteCode, householdName, onOpenInfo, onSessionExpired }: Props) {
+export function ChatScreen({
+  username,
+  token,
+  inviteCode,
+  householdName,
+  onOpenInfo,
+  onSessionExpired,
+  onUsernameChanged,
+}: Props) {
   const { messages, loading, loadError, sending, send, uploading, upload, acknowledge } = useConversation(
     token,
     inviteCode,
@@ -48,9 +59,12 @@ export function ChatScreen({ username, token, inviteCode, householdName, onOpenI
         style={styles.keyboardView}
       >
         <View style={styles.header}>
-          <View style={styles.headerIcon}>
-            <Text style={styles.headerIconText}>R</Text>
-          </View>
+          <ProfileMenu
+            username={username}
+            token={token}
+            onUsernameChanged={onUsernameChanged}
+            onSessionExpired={onSessionExpired}
+          />
           <View style={styles.headerTitleGroup}>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {householdName || 'House chat'}
@@ -127,19 +141,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  headerIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  headerIconText: {
-    color: colors.onPrimary,
-    fontSize: 20,
-    fontWeight: '800',
   },
   headerTitleGroup: {
     flex: 1,

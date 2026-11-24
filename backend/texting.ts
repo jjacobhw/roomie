@@ -7,7 +7,7 @@
  * Austin LaMarche
  */
 
-import { publicAttachments, type StoredAttachment } from './storage';
+import { publicAttachments, type StoredAttachment } from './storage.ts';
 
 export type QueryRow = Record<string, unknown>;
 
@@ -295,16 +295,27 @@ export async function updateProfileUsername(
   oldUsername: string,
   newUsername: string
 ): Promise<boolean> {
+  const trimmed = newUsername.trim();
+  if (trimmed.length < 1 || trimmed.length > 50) {
+    return false;
+  }
   const result = await pgClient.query<{ id: string }>(
-    'SELECT id FROM users WHERE display_name = $1 LIMIT 1',
-    [oldUsername]
+    'SELECT id FROM users WHERE lower(display_name) = lower($1) LIMIT 1',
+    [oldUsername.trim()]
   );
 
   if (result.rows.length === 0) {
     return false;
   }
 
-  await pgClient.query('UPDATE users SET display_name = $1 WHERE display_name = $2', [newUsername, oldUsername]);
+  const conflict = await pgClient.query<{ id: string }>(
+    'SELECT id FROM users WHERE lower(display_name) = lower($1) AND id <> $2 LIMIT 1',
+    [trimmed, result.rows[0].id]
+  );
+  if (conflict.rows.length > 0) {
+    return false;
+  }
+  await pgClient.query('UPDATE users SET display_name = $1 WHERE id = $2', [trimmed, result.rows[0].id]);
   return true;
 }
 

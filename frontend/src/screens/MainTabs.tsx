@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import type { AuthUser } from '../types/messaging';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatIcon, CheckSquareIcon } from '../components/icons';
 import { TabBar, type Tab } from '../components/TabBar';
@@ -26,10 +27,19 @@ type Props = {
   // Opens the household screen (members, rename, leave, log out).
   onOpenInfo: () => void;
   onSessionExpired: () => void;
+  onUsernameChanged?: (user: AuthUser) => void;
 };
 
 // The signed-in app: the Chat and Chores screens with a tab bar at the bottom.
-export function MainTabs({ username, token, inviteCode, householdName, onOpenInfo, onSessionExpired }: Props) {
+export function MainTabs({
+  username,
+  token,
+  inviteCode,
+  householdName,
+  onOpenInfo,
+  onSessionExpired,
+  onUsernameChanged,
+}: Props) {
   const [tab, setTab] = useState<TabKey>('chat');
   const keyboardVisible = useKeyboardVisible();
   // The phone's status bar (top) and home indicator (bottom). The top padding keeps the screens
@@ -51,6 +61,7 @@ export function MainTabs({ username, token, inviteCode, householdName, onOpenInf
           householdName={householdName}
           onOpenInfo={onOpenInfo}
           onSessionExpired={onSessionExpired}
+          onUsernameChanged={onUsernameChanged}
         />
       </View>
       <View style={[styles.screen, tab !== 'chores' && styles.hidden]}>
@@ -59,6 +70,7 @@ export function MainTabs({ username, token, inviteCode, householdName, onOpenInf
           token={token}
           inviteCode={inviteCode}
           onSessionExpired={onSessionExpired}
+          onUsernameChanged={onUsernameChanged}
         />
       </View>
       {/* Hidden while typing, so it doesn't sit between the keyboard and the text box. */}
