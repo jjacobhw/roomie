@@ -428,14 +428,13 @@ export function registerRoutes(app: Express, pool: Pool): void {
     }
   });
   app.patch('/users/me', changeUsername);
-  app.patch('/username', changeUsername);
 
   const listConversations: RequestHandler = authenticated(pool, async (_request, response) => {
     response.json({
       conversations: await getConversations(pool, _request.authUser.id),
     });
   });
-  app.get(['/convos', '/conversations'], listConversations);
+  app.get('/conversations', listConversations);
 
   app.get('/messages/:inviteCode', authenticated(pool, async (request, response) => {
     const inviteCode = routeParam(request, 'inviteCode');
@@ -476,7 +475,6 @@ export function registerRoutes(app: Express, pool: Pool): void {
     response.json({ users: result.users });
   });
   app.get('/conversations/:inviteCode/users', getConversationUsers);
-  app.get('/users/:inviteCode', getConversationUsers);
 
   app.post('/messages/:inviteCode', authenticated(pool, async (request, response) => {
     const body: unknown = request.body;
@@ -789,7 +787,6 @@ export function registerRoutes(app: Express, pool: Pool): void {
     response.status(201).json({ joined: true, inviteCode: routeParam(request, 'inviteCode') });
   });
   app.post('/conversations/:inviteCode/members', joinConversation);
-  app.post('/users/:username/:inviteCode', joinConversation);
 
   const deleteConversation: RequestHandler = authenticated(pool, async (request, response) => {
     const result = await pool.query(
@@ -850,13 +847,6 @@ export function registerRoutes(app: Express, pool: Pool): void {
   }));
 
   const removeConversationMember: RequestHandler = authenticated(pool, async (request, response) => {
-    const routeUsername = routeParam(request, 'username');
-    const targetUsername = routeUsername || request.authUser.username;
-    if (targetUsername.toLowerCase() !== request.authUser.username.toLowerCase()) {
-      response.status(403).json({ error: 'You can only remove your signed-in account.' });
-      return;
-    }
-
     const result = await leaveConversation(pool, routeParam(request, 'inviteCode'), request.authUser);
     if (result === 'not_found') {
       response.status(404).json({ error: 'Conversation not found.' });
@@ -869,8 +859,6 @@ export function registerRoutes(app: Express, pool: Pool): void {
     response.status(204).end();
   });
   app.delete('/conversations/:inviteCode/members', removeConversationMember);
-  app.delete('/conversations/:inviteCode/members/:username', removeConversationMember);
-  app.delete('/users/:username/:inviteCode', removeConversationMember);
 
   app.delete('/users/:username', authenticated(pool, async (request, response) => {
     if (routeParam(request, 'username').toLowerCase() !== request.authUser.username.toLowerCase()) {

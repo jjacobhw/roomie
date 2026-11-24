@@ -66,21 +66,16 @@ return `204`.
 | Sign in | `POST /sessions` with the same username/password |
 | Sign out | `DELETE /sessions` |
 | Change signed-in username | `PATCH /users/me` with `{"username":"New name"}` |
-| Legacy alias for username change | `PATCH /username` with `{"username":"New name"}` |
-| List conversations | `GET /conversations` (also `GET /convos`) |
+| List conversations | `GET /conversations` |
 | List messages | `GET /messages/:inviteCode` |
 | List all users | `GET /users` |
 | List conversation members | `GET /conversations/:inviteCode/users` |
-| Legacy alias for conversation members | `GET /users/:inviteCode` |
 | Send message | `POST /messages/:inviteCode` with `{"messageText":"Hello!"}`, optionally `"attachmentIds":[...]` |
 | Create conversation | `POST /conversations` with optional `{"name":"House chat"}` |
 | Rename conversation | `PATCH /conversations/:inviteCode` with `{"name":"New name"}` (owner only) |
 | Join conversation | `POST /conversations/:inviteCode/members` |
-| Legacy alias for join | `POST /users/:username/:inviteCode` |
 | Delete conversation | `DELETE /conversations/:inviteCode` (owner only) |
 | Leave conversation | `DELETE /conversations/:inviteCode/members` |
-| Remove self from a conversation by username route | `DELETE /conversations/:inviteCode/members/:username` |
-| Remove self from a conversation by legacy path | `DELETE /users/:username/:inviteCode` |
 | Delete own account | `DELETE /users/:username` (must match signed-in user) |
 | Request upload URL | `POST /conversations/:inviteCode/attachments` with `{"fileName":"pic.png","contentType":"image/png","sizeBytes":12345}` |
 | Mark upload complete | `POST /attachments/:attachmentId/complete` (uploader only) |
