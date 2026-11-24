@@ -283,7 +283,7 @@ export async function createAccount(
 }
 
 /**
- * Has no API command. TODO: Add an API command for this function if there's time.
+ * PATCH /users/me with {"username":"New name"}
  * Update the user's username in PostgreSQL.
  * @param pgClient The PostgreSQL client to use for the query.
  * @param oldUsername The current username of the user.
@@ -320,7 +320,7 @@ export async function updateProfileUsername(
 }
 
 /**
- * Has no API command. TODO: Add an API command for this function if there's time.
+ * PATCH /users/me with {"avatarUrl":"https://example.com/avatar.jpg"}
  * Update the user's profile picture (avatar URL) in PostgreSQL.
  * @param pgClient The PostgreSQL client to use for the query.
  * @param username The username of the user.
