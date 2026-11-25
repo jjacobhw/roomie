@@ -521,6 +521,7 @@ export function registerRoutes(app: Express, pool: Pool): void {
     }
 
     const client = await pool.connect();
+    let discardConnection = false;
     try {
       await client.query('BEGIN');
       await client.query(
@@ -630,12 +631,13 @@ export function registerRoutes(app: Express, pool: Pool): void {
         await client.query('ROLLBACK');
       } catch (rollbackError) {
         console.error('ROLLBACK failed:', rollbackError);
-        client.release(true);
-        throw error;
+        discardConnection = true;
       }
       throw error;
     } finally {
-      client.release();
+      // A client can only be released once (pg-pool throws on a second release), so the discard
+      // flag is applied here rather than releasing in the catch block.
+      client.release(discardConnection || undefined);
     }
   }));
 
